@@ -61,10 +61,16 @@ Nedladdningsknappar i filträdet hämtar enstaka filer eller mappar som ZIP. Dir
 
 ## Mobil, tema och dokumentformat
 
-Sidan följer enhetens ljusa eller mörka tema automatiskt. På telefon fälls biblioteket ihop efter ett filval och öppnas med **Visa filer**. Textfärg väljs ur en liten palett; färg och understrykning lagras som HTML-inslag i Markdown.
+Sidan följer enhetens ljusa eller mörka tema automatiskt. På telefon öppnar **Filer** en sidopanel till vänster. Panelen kan också svepas fram och tillbaka; när en fil väljs stängs den och innehållet visas. På dator är filträdet alltid synligt. Textfärg väljs ur en liten palett; färg och understrykning lagras som HTML-inslag i Markdown.
 
 Word-import sker lokalt med Mammoth för `.docx`. Originalfilen sparas tillsammans med en Markdown-kopia och eventuella bilder. Vanliga rubriker, textmarkeringar, listor, länkar och tabeller följer med; sidlayout och avancerade Word-funktioner kan förenklas. Äldre `.doc` behöver först sparas som `.docx`.
 
 CSV öppnas som en redigerbar tabell med Papa Parse. Excel `.xlsx` öppnas med ExcelJS och kan växla mellan arbetsbokens blad. Piltangenter och Enter flyttar mellan celler, Shift + pilar eller drag markerar områden, Delete tömmer dem, och Ctrl+C/V kopierar och klistrar in cellområden. Ctrl+Z/Y ångrar och gör om ändringar. Dubbelklick eller F2 börjar redigera en cell. Gränsen är 2 000 rader och 100 kolumner per blad. CSV-avgränsare och radslut bevaras. Excel-formler beräknas när arbetsboken öppnas i Excel; webbsidan kör inte formler. Komplexa Excel-arbetsböcker kan innehålla funktioner som ExcelJS inte bevarar fullt ut.
 
 Word- och Excel-biblioteken laddas först när de används. Konvertering och redigering sker i webbläsaren, utan någon egen server.
+
+## Filöppning och borttagning
+
+Filval visar direkt namn och laddningsindikator. När en annan fil väljs avbryts föregående hämtning. Binärdata och bildadresser cachas efter filens oföränderliga SHA under sessionen; vanlig uppdatering av biblioteket tömmer inte cachen. Utloggning tömmer den. Uppladdning visar egna bildförhandsvisningar och erbjuder alla befintliga mappar, inklusive Bilder.
+
+Filmenyn nås via ⋯, högerklick eller långtryck. Den erbjuder nedladdning och borttagning. Borttagning kräver en separat bekräftelse och sparas i historiken. Delete-tangenten tar inte bort filer. Om någon annan ändrat filen sedan den öppnades måste materialet uppdateras innan borttagningen tillåts.

@@ -44,20 +44,24 @@ export class GitHub {
     this.current = snapshot;
     return snapshot.files;
   }
-  async read(file) {
+  async read(file, options = {}) {
     if (file.size > MAX_SIZE) throw new Error('Filen är större än 5 MB och kan inte öppnas här.');
-    const blob = await this.request(`/git/blobs/${file.sha}`);
+    const blob = await this.request(`/git/blobs/${file.sha}`, options);
     return decode(blob.content);
   }
   async save(changes, message, resolveConflict) {
     if (!message.trim()) throw new Error('Beskriv vad du har ändrat.');
     if (!changes.length || changes.some(c => !validPath(c.path))) throw new Error('Ge filen ett giltigt namn.');
-    if (changes.some(c => c.bytes.length > MAX_SIZE)) throw new Error('Varje fil får vara högst 5 MB.');
+    if (changes.some(c => !c.delete && c.bytes.length > MAX_SIZE)) throw new Error('Varje fil får vara högst 5 MB.');
     changes = changes.map(c => ({ ...c }));
     for (let attempt = 0; attempt < 3; attempt++) {
       const latest = await this.snapshot();
       for (const change of changes) {
         const remote = latest.files.find(f => f.path === change.path);
+        if (change.delete) {
+          if (remote && remote.sha !== change.baseSha) throw new Error('Filen har ändrats sedan du öppnade den. Uppdatera materialet innan du tar bort den.');
+          continue;
+        }
         if ((remote?.sha || null) === (change.baseSha || null)) continue;
         const baseBytes = change.baseSha ? await this.read({ sha: change.baseSha }) : new Uint8Array();
         const remoteBytes = remote ? await this.read(remote) : new Uint8Array();
@@ -73,9 +77,11 @@ export class GitHub {
       }
       const entries = [];
       for (const change of changes) {
+        if (change.delete) { if (latest.files.some(file => file.path === change.path)) entries.push({ path: change.path, mode: '100644', type: 'blob', sha: null }); continue; }
         const blob = await this.request('/git/blobs', { method: 'POST', body: JSON.stringify({ content: encode(change.bytes), encoding: 'base64' }) });
         entries.push({ path: change.path, mode: '100644', type: 'blob', sha: blob.sha });
       }
+      if (!entries.length) return { alreadyDeleted: true };
       const tree = await this.request('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: latest.tree, tree: entries }) });
       const author = this.authorName ? { name: this.authorName, email: `${this.authorName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'anvandare'}@material.invalid` } : undefined;
       const commit = await this.request('/git/commits', { method: 'POST', body: JSON.stringify({ message: message.trim(), tree: tree.sha, parents: [latest.head], ...(author ? { author, committer: author } : {}) }) });

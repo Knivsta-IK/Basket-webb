@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import { zipSync, strToU8 } from 'fflate';
 import { sealAccess } from '../src/access.js';
 const accessPromise = sealAccess('github_pat_fake', 'en testfras med fyra ord');
 import ExcelJS from 'exceljs/dist/exceljs.min.js';
+const shaFor = content => createHash('sha1').update(content).digest('hex');
 const contents = { 'dokument/schema.csv': 'Namn;Tid\r\nPassningar;10\r\nSkott;15', 'dokument/start.md': '# Välkommen\n\nDet här är materialet.', 'ovningar/ett.md': '# Övning ett\n\nTräna passningar.', 'ovningar/tva.md': '# Övning två\n\nTräna rörelse.', 'ovningar/tre.md': '# Övning tre\n\nTräna skott.', 'ovningar/fyra.md': '# Övning fyra\n\nTräna tillsammans.' };
 let writes, stored;
 test.beforeEach(async ({ page }) => {
@@ -14,8 +16,8 @@ test.beforeEach(async ({ page }) => {
     else if (!path) data = { default_branch: 'main' };
     else if (path.startsWith('/git/ref/')) data = { object: { sha: 'head-1' } };
     else if (path.startsWith('/git/commits/')) data = { tree: { sha: 'tree-1' } };
-    else if (path.startsWith('/git/trees/')) data = { tree: Object.entries(stored).map(([path, content], i) => ({ path, size: Buffer.byteLength(content), sha: `file-${i}`, type: 'blob' })) };
-    else if (path.startsWith('/git/blobs/')) { const index = Number(path.split('-').pop()); data = { content: Buffer.from(Object.values(stored)[index]).toString('base64') }; }
+    else if (path.startsWith('/git/trees/')) data = { tree: Object.entries(stored).map(([path, content], i) => ({ path, size: Buffer.byteLength(content), sha: shaFor(content), type: 'blob' })) };
+    else if (path.startsWith('/git/blobs/')) { const value = Object.values(stored).find(content => shaFor(content) === path.split('/').pop()); data = { content: Buffer.from(value).toString('base64') }; }
     await route.fulfill({ json: data });
   });
   await page.route('**/access.json', async route => route.fulfill({json:await accessPromise}));
@@ -143,4 +145,32 @@ test('inloggning visar bara namn och lösenord och fel lösenord når inte mater
   await page.getByRole('button',{name:'Logga ut'}).click();
   expect(await page.locator('body').innerText()).not.toMatch(/github|token|åtkomstnyckel/i);
   await page.getByLabel('Ditt namn',{exact:true}).fill('Anna Andersson');await page.getByLabel('Lösenord',{exact:true}).fill('fel lösenord');await page.getByRole('button',{name:'Öppna biblioteket'}).click();await expect(page.locator('#login-error')).toContainText('Fel lösenord');await expect(page.locator('.tiptap')).toHaveCount(0);await expect(page.locator('#password')).toHaveValue('');
+});
+
+test('bildladdning visar feedback, avbryts vid nytt val och använder cache', async ({page}) => {
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');stored['bilder/test.png']=png;
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();
+  let release;const gate=new Promise(resolve=>release=resolve);let requests=0;
+  await page.route(`**/git/blobs/${shaFor(png)}`,async route=>{requests++;await gate;try{await route.fulfill({json:{content:png.toString('base64')}});}catch{}});
+  await page.locator('[data-path="bilder/test.png"]').click();await expect(page.getByRole('status').filter({hasText:'Öppnar test.png'})).toBeVisible();
+  await page.locator('[data-path="ovningar/ett.md"]').click();await expect(page.locator('.tiptap')).toContainText('Övning ett');release();await expect(page.locator('.image-view')).toHaveCount(0);
+  await page.locator('[data-path="bilder/test.png"]').click();await expect(page.locator('.image-view img')).toBeVisible();const count=requests;
+  await page.locator('[data-path="ovningar/ett.md"]').click();await page.locator('[data-path="bilder/test.png"]').click();await expect(page.locator('.image-view img')).toBeVisible();expect(requests).toBe(count);
+});
+test('uppladdning erbjuder bilder och visar egen ljus miniatyr', async ({page}) => {
+  await page.getByRole('button',{name:'Ladda upp filer',exact:true}).click();await expect(page.locator('select[name=folder] option[value=bilder]')).toHaveCount(1);await page.locator('select[name=folder]').selectOption('bilder');
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');await page.locator('input[name=files]').setInputFiles({name:'foto.png',mimeType:'image/png',buffer:png});await expect(page.locator('.upload-preview img')).toBeVisible();expect(await page.locator('.upload-preview img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);await expect(page.locator('.upload-preview img')).toHaveCSS('background-color','rgb(255, 255, 255)');
+  await page.getByRole('button',{name:'Fortsätt',exact:true}).click();await page.getByLabel('Vad har du ändrat?').fill('Lägger bilden i rätt mapp');await page.locator('dialog').getByRole('button',{name:'Spara ändringar',exact:true}).click();await expect(page.locator('dialog')).toHaveCount(0);expect(writes.find(w=>w.path==='/git/trees').body.tree[0].path).toBe('bilder/foto.png');
+});
+test('borttagning kräver meny och bekräftelse, Delete tar inte bort', async ({page}) => {
+  await page.locator('[data-path="ovningar/ett.md"]').click();await page.keyboard.press('Delete');expect(writes).toHaveLength(0);
+  await page.locator('[data-file-row="ovningar/ett.md"]').click({button:'right'});await page.getByRole('button',{name:'Ta bort fil',exact:true}).click();await expect(page.getByRole('heading',{name:'Ta bort fil',exact:true})).toBeVisible();expect(writes).toHaveLength(0);await page.getByRole('button',{name:'Avbryt',exact:true}).click();expect(writes).toHaveLength(0);
+  await page.getByRole('button',{name:'Alternativ för ett.md',exact:true}).click();await page.getByRole('button',{name:'Ta bort fil',exact:true}).click();await page.locator('dialog').getByRole('button',{name:'Ta bort fil',exact:true}).click();await expect(page.locator('dialog')).toHaveCount(0);expect(writes.find(w=>w.path==='/git/trees').body.tree[0]).toMatchObject({path:'ovningar/ett.md',sha:null});expect(writes.some(w=>w.path==='/git/blobs')).toBe(false);
+});
+test('mobilens sidopanel kan svepas fram och tillbaka utan att byta fil', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});await expect(page.getByRole('button',{name:'☰ Filer',exact:true})).toBeVisible();
+  await page.locator('.workspace').evaluate(element=>{const touch=new Touch({identifier:1,target:element,clientX:8,clientY:250});element.dispatchEvent(new TouchEvent('touchstart',{touches:[touch],bubbles:true}));const end=new Touch({identifier:1,target:element,clientX:180,clientY:255});element.dispatchEvent(new TouchEvent('touchend',{changedTouches:[end],bubbles:true}));});await expect(page.locator('.workspace')).toHaveClass(/library-open/);await page.locator('[data-path="ovningar/ett.md"]').click();await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await expect(page.locator('.tiptap')).toContainText('Övning ett');await page.getByRole('button',{name:'☰ Filer',exact:true}).click();await page.locator('.sidebar').evaluate(element=>{const start=new Touch({identifier:1,target:element,clientX:200,clientY:250});element.dispatchEvent(new TouchEvent('touchstart',{touches:[start],bubbles:true}));const end=new Touch({identifier:1,target:element,clientX:40,clientY:255});element.dispatchEvent(new TouchEvent('touchend',{changedTouches:[end],bubbles:true}));});await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await expect(page.locator('.tiptap')).toContainText('Övning ett');
+});
+test('långtryck öppnar filmenyn på telefon', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'☰ Filer',exact:true}).click();const row=page.locator('[data-file-row="ovningar/ett.md"]');await row.dispatchEvent('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});await expect(page.locator('dialog').getByRole('button',{name:'Ta bort fil',exact:true})).toBeVisible();await row.dispatchEvent('pointerup',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});expect(writes).toHaveLength(0);
 });

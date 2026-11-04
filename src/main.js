@@ -21,9 +21,11 @@ const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 let displayName = '';
 let api, files = [], active, editor, sheet, original = '', dirty = false, busy = false, query = '', filter = 'all', plan = [], pendingImages = new Map(), imageUrls = new Map(), cache = new Map(), openVersion = 0;
 let planTitle = '', planNotes = '', clipboardCache = null, recents = [], selectedFolder = '', planDirty = false;
+let openController = null, opening = false, suppressFileClickUntil = 0;
+const fileImageUrls = new Map();
 const objectUrls = new Set();
 function blobUrl(bytes, type) { const url = URL.createObjectURL(new Blob([bytes], { type })); objectUrls.add(url); return url; }
-function clearPrivate() { displayName = ''; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; api = null; files = []; active = null; cache.clear(); plan = []; pendingImages.clear(); imageUrls.clear(); objectUrls.forEach(URL.revokeObjectURL); objectUrls.clear(); dirty = false; original = ''; planTitle = ''; planNotes = ''; query = ''; filter = 'all'; clipboardCache = null; recents = []; selectedFolder = ''; planDirty = false; openVersion++; }
+function clearPrivate() { openController?.abort(); openController = null; opening = false; fileImageUrls.clear(); displayName = ''; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; api = null; files = []; active = null; cache.clear(); plan = []; pendingImages.clear(); imageUrls.clear(); objectUrls.forEach(URL.revokeObjectURL); objectUrls.clear(); dirty = false; original = ''; planTitle = ''; planNotes = ''; query = ''; filter = 'all'; clipboardCache = null; recents = []; selectedFolder = ''; planDirty = false; openVersion++; }
 function notice(message, error = false) { const node = $('#notice'); node.textContent = message; node.className = `notice ${error ? 'error' : ''}`; node.hidden = false; clearTimeout(notice.timer); notice.timer = setTimeout(() => { node.hidden = true; }, error ? 12000 : 5500); }
 function dialog(title, content, setup) {
   const node = document.createElement('dialog'); node.innerHTML = `<div class="dialog-head"><h2>${esc(title)}</h2><button type="button" class="icon-button close" aria-label="Stäng">×</button></div>${content}`;
@@ -49,13 +51,15 @@ function login() {
 }
 
 function workspace() {
-  $('#app').innerHTML = `<header class="topbar"><a class="brand" href="#" aria-label="Knivsta IK Basket"><span class="brand-mark">${icon('ball')}</span><span>KNIVSTA IK <b>MATERIAL</b></span></a><div class="top-actions"><span class="user-name">${esc(displayName)}</span><button id="plan-toggle" class="secondary">Träningspass <span id="plan-count">0/6</span></button><button id="logout" class="plain">Logga ut</button></div></header><div class="workspace"><aside class="sidebar"><div class="sidebar-heading"><span class="eyebrow">VÅRT BIBLIOTEK</span><button class="icon-button" id="refresh" title="Hämta senaste materialet" aria-label="Hämta senaste materialet">↻</button></div><div class="library-title"><h2>Material</h2><button id="toggle-library" class="secondary">Visa filer</button></div><label class="search">${icon('search')}<input id="search" type="search" placeholder="Sök bland filer…" aria-label="Sök bland filer"></label><div class="filters"><button class="active" data-filter="all">Allt</button><button data-filter="exercises">Övningar</button><button data-filter="trainings">Träningar</button></div><nav id="tree" aria-label="Mappar och filer" tabindex="0"></nav><div class="recent-files"><span class="eyebrow">SENAST ÖPPNADE</span><div id="recents"></div></div><div class="sidebar-bottom"><button id="new-file" class="primary">${icon('plus')} Nytt dokument</button><button id="upload" class="secondary">${icon('upload')} Ladda upp filer</button><p>Gemensamt material.<br>Plats för fler idéer.</p></div></aside><main class="main"><div id="doc-bar" class="doc-bar"><span>Välj ett dokument i biblioteket</span></div><div id="format-bar" class="format-bar" hidden><select id="text-style" aria-label="Texttyp"><option value="0">Brödtext</option><option value="1">Rubrik 1</option><option value="2">Rubrik 2</option><option value="3">Rubrik 3</option><option value="4">Rubrik 4</option><option value="5">Rubrik 5</option><option value="6">Rubrik 6</option></select><span class="divider"></span><button data-format="bold" aria-label="Fetstil" title="Fetstil (Ctrl+B)"><b>B</b></button><button data-format="italic" aria-label="Kursiv" title="Kursiv (Ctrl+I)"><i>I</i></button><button id="text-color" aria-label="Textfärg" title="Textfärg"><span class="color-symbol">A</span></button><button data-format="underline" aria-label="Understruken" title="Understruken (Ctrl+U)"><u>U</u></button><span class="divider"></span><button data-format="bulletList" aria-label="Punktlista" title="Punktlista">☷</button><button data-format="orderedList" aria-label="Numrerad lista" title="Numrerad lista">1.</button><button id="link" aria-label="Infoga länk" title="Infoga länk">↗</button><button id="image" aria-label="Infoga bild" title="Infoga bild">▧</button><span class="divider"></span><button data-format="undo" aria-label="Ångra" title="Ångra">↶</button><button data-format="redo" aria-label="Gör om" title="Gör om">↷</button></div><div id="document-area" class="document-area"><div class="empty"><span class="empty-ball">${icon('ball')}</span><h1>Samlat för föreningen.</h1><p>Öppna ett dokument till vänster<br>eller skapa något nytt.</p></div></div><footer class="document-footer"><span id="save-state">Föreningens gemensamma material</span><span id="word-count"></span></footer></main><aside id="planner" class="planner" hidden></aside></div><div id="notice" class="notice" role="status" hidden></div><input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>`;
+  $('#app').innerHTML = `<header class="topbar"><a class="brand" href="#" aria-label="Knivsta IK Basket"><span class="brand-mark">${icon('ball')}</span><span>KNIVSTA IK <b>MATERIAL</b></span></a><div class="top-actions"><span class="user-name">${esc(displayName)}</span><button id="plan-toggle" class="secondary">Träningspass <span id="plan-count">0/6</span></button><button id="logout" class="plain">Logga ut</button></div></header><div class="workspace"><button id="mobile-files" class="secondary mobile-files">☰ Filer</button><button id="library-backdrop" class="library-backdrop" aria-label="Stäng filer" hidden></button><aside class="sidebar" id="library-panel" aria-label="Materialbibliotek"><div class="sidebar-heading"><span class="eyebrow">VÅRT BIBLIOTEK</span><button class="icon-button" id="refresh" title="Hämta senaste materialet" aria-label="Hämta senaste materialet">↻</button></div><div class="library-title"><h2>Material</h2><button id="toggle-library" class="secondary">Visa filer</button></div><label class="search">${icon('search')}<input id="search" type="search" placeholder="Sök bland filer…" aria-label="Sök bland filer"></label><div class="filters"><button class="active" data-filter="all">Allt</button><button data-filter="exercises">Övningar</button><button data-filter="trainings">Träningar</button></div><nav id="tree" aria-label="Mappar och filer" tabindex="0"></nav><div class="recent-files"><span class="eyebrow">SENAST ÖPPNADE</span><div id="recents"></div></div><div class="sidebar-bottom"><button id="new-file" class="primary">${icon('plus')} Nytt dokument</button><button id="upload" class="secondary">${icon('upload')} Ladda upp filer</button><p>Gemensamt material.<br>Plats för fler idéer.</p></div></aside><main class="main"><div id="doc-bar" class="doc-bar"><span>Välj ett dokument i biblioteket</span></div><div id="format-bar" class="format-bar" hidden><select id="text-style" aria-label="Texttyp"><option value="0">Brödtext</option><option value="1">Rubrik 1</option><option value="2">Rubrik 2</option><option value="3">Rubrik 3</option><option value="4">Rubrik 4</option><option value="5">Rubrik 5</option><option value="6">Rubrik 6</option></select><span class="divider"></span><button data-format="bold" aria-label="Fetstil" title="Fetstil (Ctrl+B)"><b>B</b></button><button data-format="italic" aria-label="Kursiv" title="Kursiv (Ctrl+I)"><i>I</i></button><button id="text-color" aria-label="Textfärg" title="Textfärg"><span class="color-symbol">A</span></button><button data-format="underline" aria-label="Understruken" title="Understruken (Ctrl+U)"><u>U</u></button><span class="divider"></span><button data-format="bulletList" aria-label="Punktlista" title="Punktlista">☷</button><button data-format="orderedList" aria-label="Numrerad lista" title="Numrerad lista">1.</button><button id="link" aria-label="Infoga länk" title="Infoga länk">↗</button><button id="image" aria-label="Infoga bild" title="Infoga bild">▧</button><span class="divider"></span><button data-format="undo" aria-label="Ångra" title="Ångra">↶</button><button data-format="redo" aria-label="Gör om" title="Gör om">↷</button></div><div id="document-area" class="document-area"><div class="empty"><span class="empty-ball">${icon('ball')}</span><h1>Samlat för föreningen.</h1><p>Öppna ett dokument till vänster<br>eller skapa något nytt.</p></div></div><footer class="document-footer"><span id="save-state">Föreningens gemensamma material</span><span id="word-count"></span></footer></main><aside id="planner" class="planner" hidden></aside></div><div id="notice" class="notice" role="status" hidden></div><input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>`;
   $('#logout').onclick = () => { if (busy || !confirmLeave() || (planDirty && !confirm('Du har en osparad träning. Vill du lämna den?'))) return; clearPrivate(); login(); };
   $('.brand').onclick = e => e.preventDefault();
   $('#search').oninput = e => { query = e.target.value; renderTree(); };
   document.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => { filter = button.dataset.filter; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b === button)); renderTree(); });
-  $('#refresh').onclick = async () => { if (busy || !confirmLeave()) return; const path = active?.path, client = api; try { const result = await client.load(); if (client !== api) return; files = result; cache.clear(); renderTree(); const found = files.find(f => f.path === path); if (found) await openFile(found, true); else resetDocument(); notice('Materialet är uppdaterat.'); } catch (error) { notice(error.message, true); } };
-  $('#toggle-library').onclick = () => { const collapsed = $('.sidebar').classList.toggle('collapsed'); $('#toggle-library').textContent = collapsed ? 'Visa filer' : 'Dölj filer'; };
+  $('#refresh').onclick = async () => { if (busy || !confirmLeave()) return; const path = active?.path, client = api; try { const result = await client.load(); if (client !== api) return; files = result; renderTree(); const found = files.find(f => f.path === path); if (found) await openFile(found, true); else resetDocument(); notice('Materialet är uppdaterat.'); } catch (error) { notice(error.message, true); } };
+  $('#toggle-library').textContent = 'Stäng'; $('#toggle-library').onclick = () => setLibraryOpen(false);
+  $('#mobile-files').onclick = () => setLibraryOpen(true); $('#library-backdrop').onclick = () => setLibraryOpen(false);
+  setupSwipes();
   $('#text-color').onclick = colorPalette;
   $('#new-file').onclick = newDocument; $('#upload').onclick = uploadFiles;
   $('#plan-toggle').onclick = () => { $('#planner').hidden = !$('#planner').hidden; renderPlan(); };
@@ -63,7 +67,7 @@ function workspace() {
   document.querySelectorAll('[data-format]').forEach(button => { button.onmousedown = e => e.preventDefault(); button.onclick = () => { const action = { bold: 'toggleBold', italic: 'toggleItalic', underline: 'toggleUnderline', bulletList: 'toggleBulletList', orderedList: 'toggleOrderedList', undo: 'undo', redo: 'redo' }[button.dataset.format]; editor.chain().focus()[action]().run(); }; });
   $('#link').onclick = addLink; $('#image').onclick = () => $('#image-input').click();
   $('#image-input').onchange = e => { [...e.target.files].forEach(file => addImage(file)); e.target.value = ''; };
-  renderTree(); renderPlan(); setupTreeTransfers();
+  renderTree(); renderPlan(); setupTreeTransfers(); setupFileMenus();
 }
 function folderLabel(path) { const leaf = path.split('/').pop(); return ({ ovningar: 'Övningar', dokument: 'Dokument', traningar: 'Träningar', bilder: 'Bilder', 'Kom-igang': 'Kom igång' })[leaf] || leaf.replace(/-/g, ' '); }
 function renderTree() {
@@ -71,51 +75,91 @@ function renderTree() {
   const root = { folders: {}, files: [] };
   if (!query) for (const path of api.current?.directories || []) { if (filter === 'exercises' && !/^(ovningar|övningar)(\/|$)/i.test(path)) continue; if (filter === 'trainings' && !/^traningar(\/|$)/.test(path)) continue; let node = root; for (const part of path.split('/')) node = node.folders[part] ||= { folders: {}, files: [] }; }
   for (const file of visible) { const parts = file.path.split('/'); parts.pop(); let node = root; for (const part of parts) node = node.folders[part] ||= { folders: {}, files: [] }; node.files.push(file); }
-  const draw = (node, path = '') => Object.entries(node.folders).sort(([a], [b]) => a.localeCompare(b, 'sv')).map(([name, child]) => `<details open class="tree-folder" data-folder="${esc(`${path}${name}`)}"><summary>${icon('folder')}<span>${esc(folderLabel(name))}</span><button class="tree-download" data-download-folder="${esc(`${path}${name}`)}" aria-label="Ladda ner mapp ${esc(folderLabel(name))}" title="Ladda ner mapp">${icon('download')}</button></summary><div>${draw(child, `${path}${name}/`)}</div></details>`).join('') + node.files.sort((a, b) => a.path.localeCompare(b.path, 'sv')).map(file => `<div class="file-row"><button class="tree-file ${active?.path === file.path ? 'selected' : ''}" data-path="${esc(file.path)}" title="${esc(file.path)}">${icon('file')}<span>${esc(file.path.split('/').pop().replace(/\.(md|markdown)$/i, '').replace(/-/g, ' '))}</span>${isExercise(file.path) ? '<span class="exercise-dot" title="Övning"></span>' : ''}</button><button class="tree-download" data-download-file="${esc(file.path)}" aria-label="Ladda ner ${esc(file.path.split('/').pop())}" title="Ladda ner fil">${icon('download')}</button></div>`).join('');
+  const draw = (node, path = '') => Object.entries(node.folders).sort(([a], [b]) => a.localeCompare(b, 'sv')).map(([name, child]) => `<details open class="tree-folder" data-folder="${esc(`${path}${name}`)}"><summary>${icon('folder')}<span>${esc(folderLabel(name))}</span><button class="tree-download" data-download-folder="${esc(`${path}${name}`)}" aria-label="Ladda ner mapp ${esc(folderLabel(name))}" title="Ladda ner mapp">${icon('download')}</button></summary><div>${draw(child, `${path}${name}/`)}</div></details>`).join('') + node.files.sort((a, b) => a.path.localeCompare(b.path, 'sv')).map(file => `<div class="file-row" data-file-row="${esc(file.path)}"><button class="tree-file ${active?.path === file.path ? 'selected' : ''}" data-path="${esc(file.path)}" title="${esc(file.path)}">${icon('file')}<span>${esc(file.path.split('/').pop().replace(/\.(md|markdown)$/i, '').replace(/-/g, ' '))}</span>${isExercise(file.path) ? '<span class="exercise-dot" title="Övning"></span>' : ''}</button><button class="tree-download" data-download-file="${esc(file.path)}" aria-label="Ladda ner ${esc(file.path.split('/').pop())}" title="Ladda ner fil">${icon('download')}</button><button class="file-menu-button" data-menu-file="${esc(file.path)}" aria-label="Alternativ för ${esc(file.path.split('/').pop())}">⋯</button></div>`).join('');
   $('#tree').innerHTML = `<details open class="tree-folder repo-root" data-folder=""><summary>${icon('folder')}<span>Basket</span><button class="tree-download" data-download-folder="" aria-label="Ladda ner hela Basket" title="Ladda ner hela Basket">${icon('download')}</button></summary><div>${(visible.length || Object.keys(root.folders).length) ? draw(root) : '<p class="tree-empty">Inga filer här ännu.</p>'}</div></details>`;
-  $('#tree').querySelectorAll('[data-path]').forEach(button => button.onclick = () => openFile(files.find(f => f.path === button.dataset.path)));
+  $('#tree').querySelectorAll('[data-path]').forEach(button => button.onclick = () => { if (Date.now() < suppressFileClickUntil) return; openFile(files.find(f => f.path === button.dataset.path)); });
+  $('#tree').querySelectorAll('[data-menu-file]').forEach(button => button.onclick = event => { event.stopPropagation(); fileMenu(files.find(file => file.path === button.dataset.menuFile)); });
   $('#tree').querySelectorAll('[data-download-file]').forEach(button => button.onclick = async () => { try { const file = files.find(f => f.path === button.dataset.downloadFile); download(await bytesOf(file), file.path.split('/').pop()); } catch (error) { notice(error.message, true); } });
   $('#tree').querySelectorAll('[data-download-folder]').forEach(button => button.onclick = event => { event.preventDefault(); event.stopPropagation(); downloadFolder(button.dataset.downloadFolder); });
   $('#tree').querySelectorAll('summary').forEach(summary => summary.addEventListener('click', () => { selectedFolder = summary.parentElement.dataset.folder; }));
 
 }
-async function bytesOf(file) { const client = api; if (!client) throw new Error('Du är utloggad.'); if (!cache.has(file.sha)) { const bytes = await client.read(file); if (client !== api) throw new Error('Sessionen har avslutats.'); cache.set(file.sha, bytes); } return cache.get(file.sha); }
+async function bytesOf(file, signal) {
+  const client = api; if (!client) throw new Error('Du är utloggad.');
+  signal?.throwIfAborted();
+  if (!cache.has(file.sha)) {
+    const bytes = await client.read(file, { signal });
+    signal?.throwIfAborted();
+    if (client !== api) throw new Error('Sessionen har avslutats.');
+    cache.set(file.sha, bytes);
+  }
+  return cache.get(file.sha);
+}
+function cachedImage(file, bytes) {
+  if (!fileImageUrls.has(file.sha)) fileImageUrls.set(file.sha, blobUrl(bytes, imageMime(file.path)));
+  return fileImageUrls.get(file.sha);
+}
+
 function resolvePath(documentPath, reference) {
   if (/^[a-z][a-z\d+.-]*:/i.test(reference) || reference.startsWith('//')) return null;
   try { const url = new URL(reference, `https://material.local/${documentPath}`); return decodeURIComponent(url.pathname.slice(1)); } catch { return null; }
 }
 function relativePath(from, to) { const source = from.split('/').slice(0, -1); const dest = to.split('/'); while (source[0] && source[0] === dest[0]) { source.shift(); dest.shift(); } return `${'../'.repeat(source.length)}${dest.join('/')}`; }
-async function prepareImages(content, documentPath) {
+async function prepareImages(content, documentPath, signal) {
   const references = [...content.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)/g)].map(m => m[1]);
-  await Promise.all(references.map(async ref => { const path = resolvePath(documentPath, ref); if (!path || imageUrls.has(path)) return; const file = files.find(f => f.path === path); const mime = imageMime(path); if (!file || !mime) return; try { imageUrls.set(path, blobUrl(await bytesOf(file), mime)); } catch { /* Missing images do not prevent opening text. */ } }));
+  await Promise.all(references.map(async ref => {
+    const path = resolvePath(documentPath, ref), file = files.find(f => f.path === path);
+    if (!file || !imageMime(path)) return;
+    try { imageUrls.set(path, cachedImage(file, await bytesOf(file, signal))); }
+    catch (error) { if (error.name === 'AbortError') throw error; }
+  }));
 }
 function imageMime(path) { const ext = path.split('.').pop().toLowerCase(); return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' })[ext]; }
+function loadingView(name) { return `<div class="file-loading" role="status"><span class="loading-spinner" aria-hidden="true"></span><span>Öppnar ${esc(name)}…</span></div>`; }
 async function openFile(file, force = false) {
-  if (busy || (!force && !confirmLeave())) return;
-  const version = ++openVersion;
+  if (!file || busy || (!force && !confirmLeave())) return;
+  openController?.abort();
+  const controller = new AbortController(); openController = controller;
+  const { signal } = controller, version = ++openVersion;
+  sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; pendingImages.clear();
+  active = file; dirty = false; original = ''; opening = true;
+  recents = [file.path, ...recents.filter(p => p !== file.path)].slice(0, 4);
+  renderRecents(); renderTree(); renderDocBar(); setLibraryOpen(false);
+  $('#format-bar').hidden = true;
+  $('#document-area').classList.remove('has-sheet');
+  $('#document-area').innerHTML = loadingView(file.path.split('/').pop());
+  $('#document-area').setAttribute('aria-busy','true'); updateStatus();
   try {
-    const bytes = await bytesOf(file); if (version !== openVersion) return;
+    const bytes = await bytesOf(file, signal); if (version !== openVersion) return;
     const content = isMarkdown(file.path) ? text(bytes) : '';
-    if (isMarkdown(file.path)) await prepareImages(content, file.path);
-    if (version !== openVersion) return;
-    sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; pendingImages.clear(); active = file; dirty = false; original = content; recents = [file.path, ...recents.filter(p => p !== file.path)].slice(0, 4); renderRecents(); renderTree(); renderDocBar();
+    if (isMarkdown(file.path)) await prepareImages(content, file.path, signal);
+    signal.throwIfAborted(); if (version !== openVersion) return;
+    original = content;
     if (isMarkdown(file.path)) mountEditor(content);
     else if (isSheet(file.path)) {
-      $('#format-bar').hidden = true; $('#document-area').innerHTML = '<div id="sheet-view" class="sheet-view"></div>'; $('#document-area').classList.add('has-sheet');
-      const container = $('#sheet-view'); const { mountSheet } = await import('./sheet.js');
-      const result = await mountSheet(container, file, bytes, () => { dirty = true; updateStatus(); }, notice);
+      const { mountSheet } = await import('./sheet.js');
+      signal.throwIfAborted(); if (version !== openVersion) return;
+      $('#document-area').innerHTML = '<div id="sheet-view" class="sheet-view"></div>'; $('#document-area').classList.add('has-sheet');
+      const result = await mountSheet($('#sheet-view'), file, bytes, () => { dirty = true; updateStatus(); }, notice);
       if (version !== openVersion) { result.destroy(); return; } sheet = result;
+    } else if (imageMime(file.path)) {
+      const picture = new window.Image(); picture.src = cachedImage(file, bytes); picture.alt = file.path.split('/').pop();
+      await picture.decode(); signal.throwIfAborted(); if (version !== openVersion) return;
+      $('#document-area').innerHTML = '<div class="image-view"></div>'; $('#document-area .image-view').append(picture);
+      renderTree();
     } else {
-      $('#format-bar').hidden = true;
-      const mime = imageMime(file.path);
-      $('#document-area').innerHTML = mime ? `<div class="paper attachment"><img src="${blobUrl(bytes, mime)}" alt="${esc(file.path.split('/').pop())}"></div>` : `<div class="empty">${icon('file')}<h2>${esc(file.path.split('/').pop())}</h2><p>Den här filen kan laddas ner.</p><button id="attachment-download" class="primary">Ladda ner fil</button></div>`;
-      if ($('#attachment-download')) $('#attachment-download').onclick = () => download(bytes, file.path.split('/').pop());
+      $('#document-area').innerHTML = `<div class="empty">${icon('file')}<h2>${esc(file.path.split('/').pop())}</h2><p>Den här filen kan laddas ner.</p><button id="attachment-download" class="primary">Ladda ner fil</button></div>`;
+      $('#attachment-download').onclick = () => download(bytes, file.path.split('/').pop());
     }
-    if (!isSheet(file.path)) $('#document-area').classList.remove('has-sheet');
-    if (matchMedia('(max-width:760px)').matches) { $('.sidebar').classList.add('collapsed'); $('#toggle-library').textContent = 'Visa filer'; }
-    updateStatus();
-  } catch (error) { notice(error.message, true); }
+  } catch (error) {
+    if (version !== openVersion || error.name === 'AbortError') return;
+    $('#document-area').innerHTML = `<div class="empty"><h2>Filen kunde inte öppnas</h2><p>${esc(error.message || 'Försök igen.')}</p><button id="retry-file" class="secondary">Försök igen</button></div>`;
+    $('#retry-file').onclick = () => openFile(file, true);
+  } finally {
+    if (version === openVersion) { opening = false; $('#document-area')?.setAttribute('aria-busy','false'); updateStatus(); }
+  }
 }
+
 function mountEditor(content) {
   sheet?.destroy(); sheet = null; $('#document-area').classList.remove('has-sheet');
   $('#format-bar').hidden = false;
@@ -142,15 +186,17 @@ function updateToolbar() {
 }
 function updateStatus() {
   if (!$('#save-state')) return;
-  $('#save-state').textContent = busy ? 'Sparar…' : dirty ? 'Du har osparade ändringar' : active ? 'Alla ändringar är sparade' : 'Föreningens gemensamma material';
+  $('#save-state').textContent = busy ? 'Sparar…' : opening ? 'Öppnar fil…' : dirty ? 'Du har osparade ändringar' : active ? 'Alla ändringar är sparade' : 'Föreningens gemensamma material';
   $('#save-state').classList.toggle('unsaved', dirty);
   if ($('#save-doc')) $('#save-doc').disabled = busy || !dirty;
   $('#word-count').textContent = editor ? `${editor.getText().trim().split(/\s+/).filter(Boolean).length} ord` : '';
 }
 function renderDocBar() {
-  $('#doc-bar').innerHTML = `<div class="breadcrumb">${icon('file')}<span>${esc(active.path.split('/').slice(0, -1).map(folderLabel).join(' / ') || 'Material')}</span><span>/</span><strong>${esc(titleOf(active.path))}</strong></div><div class="doc-actions">${isExercise(active.path) ? '<button id="add-plan" class="secondary">+ Till träning</button>' : ''}<button id="download-doc" class="icon-button" aria-label="Ladda ner dokument" title="Ladda ner dokument">${icon('download')}</button>${editablePath(active.path) ? '<button id="save-doc" class="primary compact" disabled>Spara ändringar</button>' : ''}</div>`;
+  const selectedFile = active;
+  $('#doc-bar').innerHTML = `<div class="breadcrumb">${icon('file')}<span>${esc(active.path.split('/').slice(0, -1).map(folderLabel).join(' / ') || 'Material')}</span><span>/</span><strong>${esc(titleOf(active.path))}</strong></div><div class="doc-actions">${isExercise(active.path) ? '<button id="add-plan" class="secondary">+ Till träning</button>' : ''}<button id="active-file-menu" class="icon-button" aria-label="Filalternativ">⋯</button><button id="download-doc" class="icon-button" aria-label="Ladda ner dokument" title="Ladda ner dokument">${icon('download')}</button>${editablePath(active.path) ? '<button id="save-doc" class="primary compact" disabled>Spara ändringar</button>' : ''}</div>`;
+  $('#active-file-menu').onclick = () => fileMenu(selectedFile);
   if ($('#add-plan')) $('#add-plan').onclick = addToPlan;
-  $('#download-doc').onclick = async () => { if (editor) download(utf8.encode(editor.getMarkdown()), active.path.split('/').pop()); else if (sheet) download(await sheet.getBytes(), active.path.split('/').pop()); else download(await bytesOf(active), active.path.split('/').pop()); };
+  $('#download-doc').onclick = async () => { if (editor) download(utf8.encode(editor.getMarkdown()), active.path.split('/').pop()); else if (sheet) download(await sheet.getBytes(), active.path.split('/').pop()); else download(await bytesOf(selectedFile), selectedFile.path.split('/').pop()); };
   if ($('#save-doc')) $('#save-doc').onclick = saveDocument;
 }
 async function addImage(file) {
@@ -180,20 +226,22 @@ function newDocument() {
     node.querySelector('form').onsubmit = event => {
       event.preventDefault(); const name = node.querySelector('[name=name]').value.trim(); const path = `${node.querySelector('[name=folder]').value}/${slug(name)}.md`;
       if (files.some(f => f.path === path)) return notice('Det namnet används redan. Välj ett annat.', true);
+      openController?.abort(); openVersion++; opening = false; $('#document-area').setAttribute('aria-busy','false');
       editor?.destroy(); pendingImages.clear(); active = { path, sha: null, exercise: isExercise(path) }; dirty = true; renderDocBar(); mountEditor(`# ${name}\n\n`); dirty = true; renderTree(); updateStatus(); node.close(); editor.commands.focus('end');
     };
   });
 }
-function resetDocument() { sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; active = null; dirty = false; pendingImages.clear(); $('#format-bar').hidden = true; $('#doc-bar').innerHTML = '<span>Välj ett dokument i biblioteket</span>'; $('#document-area').innerHTML = '<div class="empty"><h2>Välj ett dokument till vänster.</h2></div>'; updateStatus(); }
+function resetDocument() { openController?.abort(); openVersion++; opening = false; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; active = null; dirty = false; pendingImages.clear(); $('#format-bar').hidden = true; $('#doc-bar').innerHTML = '<span>Välj ett dokument i biblioteket</span>'; $('#document-area').innerHTML = '<div class="empty"><h2>Välj ett dokument till vänster.</h2></div>'; updateStatus(); }
 async function saveDocument() {
   if (sheet) { const target = active.path; const changes = [{ path: target, bytes: await sheet.getBytes(), baseSha: active.sha }]; commitDialog(changes, async () => { dirty = false; await reload(target); }); return; }
   const content = editor.getMarkdown(); const changes = [{ path: active.path, bytes: utf8.encode(content), baseSha: active.sha }];
   for (const [path, bytes] of pendingImages) if (content.includes(relativePath(active.path, path))) changes.push({ path, bytes, baseSha: null });
   commitDialog(changes, async () => { const path = active.path; dirty = false; pendingImages.clear(); await reload(path); });
 }
-async function reload(path) { const client = api; const result = await client.load(); if (client !== api) return; files = result; cache.clear(); renderTree(); if (path) { const file = files.find(f => f.path === path); if (file) await openFile(file, true); } }
-function commitDialog(changes, after) {
-  const node = dialog('Spara ändringar', `<form><p>${changes.length === 1 ? 'Ditt dokument' : `Dina ${changes.length} filer`} sparas i föreningens gemensamma material.</p><details class="save-files"><summary>Visa filer som sparas</summary><ul>${changes.map(change => `<li>${esc(change.path)}</li>`).join('')}</ul></details><label>Vad har du ändrat?<textarea name="message" placeholder="Till exempel: Förtydligade instruktionerna och lade till en bild" rows="3" required maxlength="500"></textarea></label><p class="muted">Beskrivningen hjälper oss att följa hur materialet utvecklas.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary cancel-save">Avbryt</button><button type="submit" class="primary">Spara ändringar</button></div></form>`);
+async function reload(path) { const client = api; const result = await client.load(); if (client !== api) return; files = result; renderTree(); if (path) { const file = files.find(f => f.path === path); if (file) await openFile(file, true); } }
+function commitDialog(changes, after, removing = false) {
+  const node = dialog(removing ? 'Ta bort fil' : 'Spara ändringar', `<form><p>${removing ? 'Filen tas bort från det gemensamma materialet när du bekräftar.' : `${changes.length === 1 ? 'Ditt dokument' : `Dina ${changes.length} filer`} sparas i föreningens gemensamma material.`}</p><details class="save-files"><summary>Visa filer som sparas</summary><ul>${changes.map(change => `<li>${esc(change.path)}</li>`).join('')}</ul></details><label>Vad har du ändrat?<textarea name="message" placeholder="Till exempel: Förtydligade instruktionerna och lade till en bild" rows="3" required maxlength="500"></textarea></label><p class="muted">Beskrivningen hjälper oss att följa hur materialet utvecklas.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary cancel-save">Avbryt</button><button type="submit" class="primary">Spara ändringar</button></div></form>`);
+  if (removing) { node.querySelector('[type=submit]').textContent = 'Ta bort fil'; node.querySelector('[name=message]').value = `Tar bort ${changes[0].path.split('/').pop()}`; }
   node.querySelector('.cancel-save').onclick = () => node.close();
   node.querySelector('form').onsubmit = async event => {
     event.preventDefault(); if (busy) return; busy = true; updateStatus(); const submit = node.querySelector('[type=submit]'); submit.disabled = true; submit.textContent = 'Sparar…'; const close = node.querySelector('.close'); close.disabled = true; node.querySelector('.cancel-save').disabled = true;
@@ -203,7 +251,7 @@ function commitDialog(changes, after) {
       await api.save(changes, node.querySelector('textarea').value, resolveConflict);
       busy = false; editor?.setEditable(true); node.close(); await after(); notice('Sparat! Materialet är uppdaterat.');
     } catch (error) { node.querySelector('.form-error').textContent = error.message; }
-    finally { busy = false; editor?.setEditable(true); submit.disabled = false; submit.textContent = 'Spara ändringar'; close.disabled = false; node.querySelector('.cancel-save').disabled = false; node.removeEventListener('cancel', blockClose); updateStatus(); }
+    finally { busy = false; editor?.setEditable(true); submit.disabled = false; submit.textContent = removing ? 'Ta bort fil' : 'Spara ändringar'; close.disabled = false; node.querySelector('.cancel-save').disabled = false; node.removeEventListener('cancel', blockClose); updateStatus(); }
   };
 }
 function resolveConflict(conflict) {
@@ -226,7 +274,19 @@ function resolveConflict(conflict) {
 
 function uploadFiles() {
   if (busy) return;
-  dialog('Lägg till material', `<form><label>Placering<select name="folder"><option value="ovningar">Övningar</option><option value="dokument">Dokument</option><option value="">Basket</option></select></label><label class="file-pick">Välj filer<input type="file" name="files" multiple></label><label class="file-pick">Eller välj en hel mapp<input type="file" name="folders" webkitdirectory multiple></label><p class="muted">Word-filer (.docx) får också en redigerbar dokumentkopia. Mappstrukturen följer med. Högst 200 filer, 5 MB per fil och 50 MB totalt.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button class="primary">Fortsätt</button></div></form>`, node => {
+  const folders = [...new Set(['', 'bilder', 'ovningar', 'dokument', 'traningar', ...(api.current?.directories || []), ...files.map(file => file.path.split('/').slice(0,-1).join('/'))])].sort((a,b)=>a.localeCompare(b,'sv'));
+  dialog('Lägg till material', `<form><label>Placering<select name="folder">${folders.map(path => `<option value="${esc(path)}" ${path === (selectedFolder || 'ovningar') ? 'selected' : ''}>${esc(path ? path.split('/').map(folderLabel).join(' / ') : 'Basket')}</option>`).join('')}</select></label><label class="file-pick custom-picker">Välj filer<input type="file" name="files" multiple></label><label class="file-pick custom-picker">Eller välj en hel mapp<input type="file" name="folders" webkitdirectory multiple></label><div id="upload-previews" class="upload-previews" aria-live="polite"></div><p class="muted">Word-filer (.docx) får också en redigerbar dokumentkopia. Mappstrukturen följer med. Högst 200 filer, 5 MB per fil och 50 MB totalt.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button class="primary">Fortsätt</button></div></form>`, node => {
+    const previews = [];
+    node.querySelectorAll('input[type=file]').forEach(input => input.addEventListener('change', () => {
+      previews.forEach(URL.revokeObjectURL); previews.length = 0;
+      const chosen = [...node.querySelector('[name=files]').files, ...node.querySelector('[name=folders]').files];
+      node.querySelector('#upload-previews').innerHTML = chosen.map(file => {
+        const url = imageMime(file.name) ? URL.createObjectURL(file) : null; if (url) previews.push(url);
+        return `<div class="upload-preview">${url ? `<img src="${url}" alt="Förhandsvisning av ${esc(file.name)}">` : icon('file')}<span>${esc(file.webkitRelativePath || file.name)}</span><small>${Math.ceil(file.size/1024)} KB</small></div>`;
+      }).join('');
+    }));
+    node.querySelector('#upload-previews').addEventListener('error', event => { if (event.target.tagName === 'IMG') { const replacement=document.createElement('span'); replacement.className='preview-unavailable'; replacement.textContent='Bild'; event.target.replaceWith(replacement); } }, true);
+    node.addEventListener('close', () => previews.forEach(URL.revokeObjectURL));
     node.querySelector('form').onsubmit = async event => {
       event.preventDefault();
       const uploaded = [...node.querySelector('[name=files]').files, ...node.querySelector('[name=folders]').files];
@@ -387,4 +447,32 @@ function colorPalette() {
   dialog('Välj textfärg', `<p>Markera text och välj en färg.</p><div class="color-palette">${colors.map(([name,color])=>`<button class="color-choice" data-color="${color}" aria-label="${name}"><span style="background:${color||'var(--ink)'}"></span>${name}</button>`).join('')}</div>`, node => {
     node.querySelectorAll('[data-color]').forEach(button => button.onclick = () => { const color = button.dataset.color; color ? editor.chain().focus().setColor(color).run() : editor.chain().focus().unsetColor().run(); node.close(); });
   });
+}
+
+function setLibraryOpen(open) {
+  if (!$('.workspace')) return;
+  $('.workspace').classList.toggle('library-open', open);
+  $('#library-backdrop').hidden = !open;
+  $('#mobile-files').setAttribute('aria-expanded', String(open));
+}
+function setupSwipes() {
+  let start;
+  const workspace = $('.workspace');
+  workspace.addEventListener('touchstart', event => { if (event.touches.length !== 1) { start = null; return; } const touch = event.touches[0]; if (event.target.closest('dialog,input,textarea,.sheet-view') || (event.target.closest('.tiptap') && touch.clientX > 28)) { start = null; return; } start = {x:touch.clientX,y:touch.clientY,open:workspace.classList.contains('library-open')}; }, {passive:true});
+  workspace.addEventListener('touchend', event => { if (!start || !matchMedia('(max-width:760px)').matches) return; const touch=event.changedTouches[0],dx=touch.clientX-start.x,dy=touch.clientY-start.y; if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.5) { if(start.open&&dx<0)setLibraryOpen(false);else if(!start.open&&dx>0&&(start.x<48||event.target.closest('.image-view,.document-area')))setLibraryOpen(true); } start=null; }, {passive:true});
+}
+function fileMenu(file) {
+  if (!file || busy) return;
+  dialog(file.path.split('/').pop(), '<div class="file-actions"><button class="secondary" id="menu-download">Ladda ner</button><button class="secondary danger" id="menu-delete">Ta bort fil</button></div>', node => {
+    node.querySelector('#menu-download').onclick = async () => { node.close(); try { download(await bytesOf(file),file.path.split('/').pop()); } catch(error) { notice(error.message,true); } };
+    node.querySelector('#menu-delete').onclick = () => { node.close(); if(active?.path===file.path&&!confirmLeave())return; commitDialog([{path:file.path,baseSha:file.sha,delete:true}],async()=>{ if(active?.path===file.path)resetDocument();recents=recents.filter(path=>path!==file.path);await reload();renderRecents(); },true); };
+  });
+}
+function setupFileMenus() {
+  const tree=$('#tree');let timer,start;
+  const cancel=()=>{clearTimeout(timer);timer=null;};
+  tree.addEventListener('contextmenu',event=>{const row=event.target.closest('[data-file-row]');if(!row)return;event.preventDefault();cancel();suppressFileClickUntil=Date.now()+800;fileMenu(files.find(file=>file.path===row.dataset.fileRow));});
+  tree.addEventListener('pointerdown',event=>{if(event.pointerType!=='touch'||!event.target.closest('[data-file-row]'))return;const path=event.target.closest('[data-file-row]').dataset.fileRow;start={x:event.clientX,y:event.clientY};timer=setTimeout(()=>{suppressFileClickUntil=Date.now()+1000;fileMenu(files.find(file=>file.path===path));},550);});
+  tree.addEventListener('pointermove',event=>{if(start&&Math.hypot(event.clientX-start.x,event.clientY-start.y)>10)cancel();});
+  for(const name of ['pointerup','pointercancel','scroll'])tree.addEventListener(name,cancel);
 }

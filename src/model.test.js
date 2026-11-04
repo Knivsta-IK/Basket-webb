@@ -50,3 +50,9 @@ test('bild- och bilagelänkar pekar rätt även från övningar i undermappar', 
   assert.match(output, /!\[Bild\]\(\.\.\/bilder\/a.png\)/);
   assert.match(output, /\[Bilaga\]\(\.\.\/bilagor\/a.pdf\)/);
 });
+test('borttagning skapar bara en träduppdatering med null-SHA', async () => {
+  const api=new GitHub('fake','Anna');api.branch='main';api.snapshot=async()=>({head:'h',tree:'t',files:[{path:'bilder/a.png',sha:'old'}]});const calls=[];api.request=async(path,options)=>{calls.push({path,body:JSON.parse(options.body)});return{sha:'new'};};await api.save([{path:'bilder/a.png',baseSha:'old',delete:true}],'Tar bort bild',()=>assert.fail());assert.equal(calls.some(c=>c.path==='/git/blobs'),false);assert.deepEqual(calls[0].body.tree,[{path:'bilder/a.png',mode:'100644',type:'blob',sha:null}]);
+});
+test('en fil som ändrats av någon annan tas inte bort', async () => {
+  const api=new GitHub('fake');api.branch='main';api.snapshot=async()=>({head:'h',tree:'t',files:[{path:'dokument/a.md',sha:'newer'}]});api.request=async()=>assert.fail('Ingen skrivning');await assert.rejects(api.save([{path:'dokument/a.md',baseSha:'old',delete:true}],'Tar bort',()=>assert.fail()),/Filen har ändrats/);
+});
