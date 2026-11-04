@@ -17,20 +17,31 @@ export async function sealAccess(secret, password) {
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: CONTEXT }, key, enc.encode(secret));
   return { version: 1, cipher: 'AES-256-GCM', kdf: 'PBKDF2-SHA256', iterations: ITERATIONS, salt: b64(salt), iv: b64(iv), ciphertext: b64(new Uint8Array(ciphertext)) };
 }
-export async function openAccess(envelope, password) {
+function validateEnvelope(envelope) {
   if (!envelope || envelope.version !== 1 || envelope.cipher !== 'AES-256-GCM' || envelope.kdf !== 'PBKDF2-SHA256' || envelope.iterations !== ITERATIONS) throw new Error('Inloggningen behöver uppdateras. Kontakta ansvarig.');
+  const salt = unb64(envelope.salt), iv = unb64(envelope.iv), ciphertext = unb64(envelope.ciphertext);
+  if (salt.length !== 32 || iv.length !== 12 || ciphertext.length < 17 || ciphertext.length > 8192) throw new Error('Inloggningen behöver uppdateras. Kontakta ansvarig.');
+  return {salt,iv,ciphertext};
+}
+export async function decryptAccess(envelope, key) {
+  const {iv,ciphertext}=validateEnvelope(envelope);
+  return dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: CONTEXT }, key, ciphertext));
+}
+export async function openAccessSession(envelope, password) {
+  validateEnvelope(envelope);
   try {
-    const salt = unb64(envelope.salt), iv = unb64(envelope.iv), ciphertext = unb64(envelope.ciphertext);
-    if (salt.length !== 32 || iv.length !== 12 || ciphertext.length < 17 || ciphertext.length > 8192) throw new Error();
-    const key = await keyFor(password, salt, envelope.iterations);
-    return dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: CONTEXT }, key, ciphertext));
+    const key = await keyFor(password, unb64(envelope.salt), envelope.iterations);
+    const token = await decryptAccess(envelope, key);
+    return { token, key, ciphertext: envelope.ciphertext };
   } catch { throw new Error('Fel lösenord. Försök igen.'); }
 }
-export async function unlock(password) {
-  if (!crypto?.subtle) throw new Error('Öppna sidan med en säker anslutning för att logga in.');
+export async function openAccess(envelope, password) { return (await openAccessSession(envelope,password)).token; }
+export async function accessEnvelope() {
+  if (!globalThis.crypto?.subtle) throw new Error('Öppna sidan med en säker anslutning för att logga in.');
   const response = await fetch(`${import.meta.env.BASE_URL}access.json`, { cache: 'no-store' });
   if (!response.ok) throw new Error('Inloggningen är inte aktiverad ännu. Kontakta ansvarig.');
-  let envelope;
-  try { envelope = await response.json(); } catch { throw new Error('Inloggningen behöver uppdateras. Kontakta ansvarig.'); }
-  return openAccess(envelope, password);
+  try { const envelope = await response.json(); validateEnvelope(envelope); return envelope; }
+  catch { throw new Error('Inloggningen behöver uppdateras. Kontakta ansvarig.'); }
 }
+export async function unlockSession(password) { return openAccessSession(await accessEnvelope(),password); }
+export async function unlock(password) { return (await unlockSession(password)).token; }

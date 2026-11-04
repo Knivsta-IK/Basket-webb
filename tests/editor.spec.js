@@ -174,3 +174,21 @@ test('mobilens sidopanel kan svepas fram och tillbaka utan att byta fil', async 
 test('långtryck öppnar filmenyn på telefon', async ({page}) => {
   await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'☰ Filer',exact:true}).click();const row=page.locator('[data-file-row="ovningar/ett.md"]');await row.dispatchEvent('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});await expect(page.locator('dialog').getByRole('button',{name:'Ta bort fil',exact:true})).toBeVisible();await row.dispatchEvent('pointerup',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});expect(writes).toHaveLength(0);
 });
+
+test('namn och inloggning återställs direkt efter omladdning', async ({page}) => {
+  await page.reload();await expect(page.locator('.tiptap')).toBeVisible();await expect(page.locator('.user-name')).toHaveText('Anna Andersson');await expect(page.locator('#password')).toHaveCount(0);
+  const saved = await page.evaluate(()=>new Promise((resolve,reject)=>{const request=indexedDB.open('knivsta-material-login',1);request.onsuccess=()=>{const db=request.result,tx=db.transaction('login','readonly'),get=tx.objectStore('login').get('current');get.onsuccess=()=>resolve({name:get.result.name,extractable:get.result.key.extractable,hasToken:'token'in get.result,hasPassword:'password'in get.result});tx.oncomplete=()=>db.close();};request.onerror=()=>reject(request.error);}));
+  expect(saved).toEqual({name:'Anna Andersson',extractable:false,hasToken:false,hasPassword:false});
+});
+test('Logga ut tar bort den sparade inloggningen även efter omladdning', async ({page}) => {
+  await page.getByRole('button',{name:'Logga ut'}).click();await expect(page.locator('#password')).toBeVisible();await page.reload();await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
+});
+test('ändrad åtkomstkonfiguration kräver ny inloggning', async ({page}) => {
+  const replacement=await sealAccess('github_pat_new','ett helt annat lösenord');await page.route('**/access.json',route=>route.fulfill({json:replacement}));await page.reload();await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
+});
+test('tillfälligt nätverksfel raderar inte den sparade inloggningen', async ({page}) => {
+  const pattern='https://api.github.com/repos/Knivsta-IK/Basket**';const offline=route=>route.abort('failed');await page.route(pattern,offline);await page.reload();await expect(page.locator('#login-error')).toContainText('Kontrollera anslutningen');await page.unroute(pattern,offline);await page.getByRole('button',{name:'Försök igen',exact:true}).click();await expect(page.locator('.tiptap')).toBeVisible();await expect(page.locator('#password')).toHaveCount(0);
+});
+test('utgången åtkomst återgår till inloggning utan att fastna', async ({page}) => {
+  await page.route('https://api.github.com/repos/Knivsta-IK/Basket',route=>route.fulfill({status:401,json:{message:'Unauthorized'}}));await page.reload();await expect(page.locator('#login-error')).toContainText('Åtkomsten behöver förnyas');await expect(page.locator('#password')).toBeVisible();
+});
