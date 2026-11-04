@@ -77,7 +77,7 @@ Filmenyn nås via ⋯, högerklick eller långtryck. Den erbjuder nedladdning oc
 
 ## Fast skärm och bildgester
 
-Arbetsrummet håller sig inom skärmens bredd och höjd. Sidhuvud och verktygsfält ligger stilla; dokumentet och filträdet har varsin rullyta. I liggande läge visas filträdet alltid till vänster, även på telefon. I stående telefonläge följer sidopanelen fingret från skärmens vänstra kant och snäpper upp vid släpp. Drag åt vänster från panelens högra kant eller skärmens högra kant stänger panelen. Drag som börjar i mitten påverkar inte menyn.
+Arbetsrummet håller sig inom skärmens bredd och höjd. Sidhuvud och verktygsfält ligger stilla; dokumentet och filträdet har varsin rullyta. I liggande läge visas filträdet alltid till vänster, även på telefon. I stående telefonläge följer sidopanelen fingret från skärmens vänstra kant och snäpper upp vid släpp. När panelen är öppen kan den kastas bort med ett vänsterdrag var som helst i panelen, även över filknappar, eller på bakgrunden bredvid den. När panelen är stängd öppnas den bara från vänsterkanten; drag i mitten hanterar bilden. Öppen eller dragen panel spärrar bildens pek- och panoreringshantering.
 
 Bildvyn har plus/minus och Anpassa, mushjulszoom, dubbelklickszoom, musdrag, tvåfingerszoom och enfingerspanorering när bilden är zoomad. Båda skärmkanterna är reserverade för navigering: bilder hanterar inte pekgester som börjar där. Zoom och panorering klipps inom bildvyn och påverkar inte sidans bredd.
 

@@ -467,6 +467,7 @@ function colorPalette() {
 function setLibraryOpen(open) {
   if (!$('.workspace')) return;
   if (matchMedia('(orientation:landscape)').matches) open=false;
+  delete $('.workspace').dataset.gestureOwner;
   $('.workspace').classList.toggle('library-open', open);
   $('#library-backdrop').hidden = !open;
   $('#mobile-files').setAttribute('aria-expanded', String(open));
@@ -474,23 +475,33 @@ function setLibraryOpen(open) {
 function setupSwipes() {
   const workspace=$('.workspace'),panel=$('.sidebar'),backdrop=$('#library-backdrop');let drag;
   const portrait=()=>matchMedia('(max-width:760px) and (orientation:portrait)').matches;
-  function finish(cancel=false){if(!drag)return;const dx=drag.dx||0;const target=cancel?drag.open:Math.abs(dx)>20?dx>0:drag.open;workspace.classList.remove('drawer-dragging');panel.style.transform='';backdrop.style.opacity='';drag=null;setLibraryOpen(target);}
+  const ownsNavigation=(x)=>portrait()&&(workspace.classList.contains('library-open')||x<=28||x>=innerWidth-28);
+  // Capture ownership before the target's image/pointer handlers can run.
+  workspace.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'&&ownsNavigation(event.clientX))workspace.dataset.gestureOwner='drawer';},{capture:true,passive:true});
+  for(const name of ['pointerup','pointercancel'])workspace.addEventListener(name,()=>{if(!drag)delete workspace.dataset.gestureOwner;},{capture:true,passive:true});
+  function finish(cancel=false){
+    if(!drag){delete workspace.dataset.gestureOwner;return;}
+    const dx=drag.dx||0,target=cancel?drag.open:Math.abs(dx)>20?dx>0:drag.open;
+    workspace.classList.remove('drawer-dragging');panel.style.transform='';backdrop.style.opacity='';drag=null;delete workspace.dataset.gestureOwner;setLibraryOpen(target);
+  }
   workspace.addEventListener('touchstart',event=>{
     if(!portrait()||event.touches.length!==1){finish(true);return;}
-    const touch=event.touches[0],view=event.target.closest('.zoom-viewport');
-    const isOpen=workspace.classList.contains('library-open'),width=panel.getBoundingClientRect().width;
-    if((!isOpen&&touch.clientX>28)||(isOpen&&touch.clientX<width-32))return;
-    if(event.target.closest('input,textarea,select,.sheet-view')||(event.target.closest('button')&&event.target.closest('button').id!=='library-backdrop')||(event.target.closest('.tiptap')&&touch.clientX>28))return;
-    drag={x:touch.clientX,y:touch.clientY,dx:0,open:workspace.classList.contains('library-open'),width:panel.getBoundingClientRect().width,started:false};
-  },{passive:true});
+    const touch=event.touches[0],isOpen=workspace.classList.contains('library-open');
+    if(!isOpen&&touch.clientX>28)return;
+    // An open panel can be closed from anywhere, including its file buttons.
+    workspace.dataset.gestureOwner='drawer';
+    const bounds=panel.getBoundingClientRect();
+    drag={x:touch.clientX,y:touch.clientY,dx:0,open:isOpen,width:bounds.width,progress:Math.max(0,Math.min(1,(bounds.x+bounds.width)/bounds.width)),started:false};
+  },{capture:true,passive:true});
   workspace.addEventListener('touchmove',event=>{
     if(!drag||event.touches.length!==1){finish(true);return;}
     const touch=event.touches[0],dx=touch.clientX-drag.x,dy=touch.clientY-drag.y;
-    if(!drag.started){if(Math.abs(dy)>8&&Math.abs(dy)>Math.abs(dx)){drag=null;return;}if(Math.abs(dx)<6)return;drag.started=true;workspace.classList.add('drawer-dragging');}
-    event.preventDefault();drag.dx=dx;const progress=Math.max(0,Math.min(1,(drag.open?1:0)+dx/drag.width));
+    if(!drag.started){if(Math.abs(dy)>8&&Math.abs(dy)>Math.abs(dx)){drag=null;delete workspace.dataset.gestureOwner;return;}if(Math.abs(dx)<6)return;drag.started=true;workspace.classList.add('drawer-dragging');workspace.dispatchEvent(new Event('drawerdragstart'));}
+    if(event.cancelable)event.preventDefault();event.stopPropagation();
+    drag.dx=dx;const progress=Math.max(0,Math.min(1,drag.progress+dx/drag.width));
     panel.style.transform=`translateX(${(progress-1)*drag.width}px)`;backdrop.hidden=false;backdrop.style.opacity=String(progress);
-  },{passive:false});
-  workspace.addEventListener('touchend',()=>finish(),{passive:true});workspace.addEventListener('touchcancel',()=>finish(true),{passive:true});
+  },{capture:true,passive:false});
+  workspace.addEventListener('touchend',event=>{if(drag&&event.changedTouches.length)drag.dx=event.changedTouches[0].clientX-drag.x;finish();},{capture:true,passive:true});workspace.addEventListener('touchcancel',()=>finish(),{capture:true,passive:true});
   const orientation=matchMedia('(orientation:landscape)');orientation.addEventListener('change',()=>{finish(true);if(orientation.matches)setLibraryOpen(false);});
 }
 
@@ -504,6 +515,7 @@ function fileMenu(file) {
 function setupFileMenus() {
   const tree=$('#tree');let timer,start;
   const cancel=()=>{clearTimeout(timer);timer=null;};
+  $('.workspace').addEventListener('drawerdragstart',cancel);
   tree.addEventListener('contextmenu',event=>{const row=event.target.closest('[data-file-row]');if(!row)return;event.preventDefault();cancel();suppressFileClickUntil=Date.now()+800;fileMenu(files.find(file=>file.path===row.dataset.fileRow));});
   tree.addEventListener('pointerdown',event=>{if(event.pointerType!=='touch'||!event.target.closest('[data-file-row]'))return;const path=event.target.closest('[data-file-row]').dataset.fileRow;start={x:event.clientX,y:event.clientY};timer=setTimeout(()=>{suppressFileClickUntil=Date.now()+1000;fileMenu(files.find(file=>file.path===path));},550);});
   tree.addEventListener('pointermove',event=>{if(start&&Math.hypot(event.clientX-start.x,event.clientY-start.y)>10)cancel();});
