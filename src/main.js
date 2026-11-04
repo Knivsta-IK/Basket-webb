@@ -1,0 +1,381 @@
+import { Editor } from '@tiptap/core';
+import { Slice, Fragment } from '@tiptap/pm/model';
+import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
+import { Markdown } from '@tiptap/markdown';
+import DOMPurify from 'dompurify';
+import { zipSync } from 'fflate';
+import { GitHub, REPO, MAX_SIZE, utf8, text, validPath, isMarkdown, isExercise, titleOf } from './github.js';
+import { trainingMarkdown } from './model.js';
+import { richExtensions } from './rich-text.js';
+import './style.css';
+
+const $ = selector => document.querySelector(selector);
+const esc = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const slug = value => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'ny-fil';
+const icons = { file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>', folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>', plus: '<path d="M12 5v14M5 12h14"/>', search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>', upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/>', arrow: '<path d="m8 5 7 7-7 7"/>', lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>', ball: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5 5c7 2 7 12 14 14M19 5C12 7 12 17 5 19"/>', download: '<path d="M12 3v13m-5-5 5 5 5-5M4 17v4h16v-4"/>' };
+const isSheet = path => /\.(csv|xlsx)$/i.test(path);
+const editablePath = path => isMarkdown(path) || isSheet(path);
+const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.file}</svg>`;
+let api, files = [], active, editor, sheet, original = '', dirty = false, busy = false, query = '', filter = 'all', plan = [], pendingImages = new Map(), imageUrls = new Map(), cache = new Map(), openVersion = 0;
+let planTitle = '', planNotes = '', clipboardCache = null, recents = [], selectedFolder = '', planDirty = false;
+const objectUrls = new Set();
+function blobUrl(bytes, type) { const url = URL.createObjectURL(new Blob([bytes], { type })); objectUrls.add(url); return url; }
+function clearPrivate() { sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; api = null; files = []; active = null; cache.clear(); plan = []; pendingImages.clear(); imageUrls.clear(); objectUrls.forEach(URL.revokeObjectURL); objectUrls.clear(); dirty = false; original = ''; planTitle = ''; planNotes = ''; query = ''; filter = 'all'; clipboardCache = null; recents = []; selectedFolder = ''; planDirty = false; openVersion++; }
+function notice(message, error = false) { const node = $('#notice'); node.textContent = message; node.className = `notice ${error ? 'error' : ''}`; node.hidden = false; clearTimeout(notice.timer); notice.timer = setTimeout(() => { node.hidden = true; }, error ? 12000 : 5500); }
+function dialog(title, content, setup) {
+  const node = document.createElement('dialog'); node.innerHTML = `<div class="dialog-head"><h2>${esc(title)}</h2><button type="button" class="icon-button close" aria-label="Stäng">×</button></div>${content}`;
+  document.body.append(node); node.querySelector('.close').onclick = () => node.close();
+  node.addEventListener('close', () => node.remove()); node.addEventListener('click', e => { if (e.target === node && !busy) node.close(); });
+  node.showModal(); setup?.(node); return node;
+}
+function confirmLeave() { return !dirty || confirm('Du har osparade ändringar. Vill du lämna dem?'); }
+function login() {
+  $('#app').innerHTML = `<div class="login-page"><header class="login-brand"><span class="brand-mark">${icon('ball')}</span><span>KNIVSTA IK <b>BASKET</b></span></header><main class="login-card"><span class="eyebrow">FÖRENINGENS ARBETSRUM</span><h1>Mer spel.<br>Fler idéer.<br><em>Bättre träningar.</em></h1><p>Samla övningar, utveckla material och skapa nästa träningspass. Tillsammans.</p><form id="login-form"><label for="key">Din åtkomstnyckel</label><input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Klistra in din nyckel från GitHub" required><button class="primary" type="submit">Öppna materialet <span>→</span></button><p id="login-error" role="alert"></p></form><details><summary>Första gången? Så får du en nyckel</summary><p>Nyckeln är en personlig GitHub-token och fungerar som ditt lösenord. Ditt GitHub-konto behöver ha tillgång till föreningens privata material.</p><ol><li>Öppna <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">GitHubs sida för en ny nyckel</a>.</li><li>Välj <strong>Knivsta-IK</strong> som ägare och enbart repot <strong>Basket</strong>.</li><li>Under <strong>Repository permissions → Contents</strong>, välj <strong>Read and write</strong>. Välj ett utgångsdatum och skapa nyckeln.</li><li>Klistra in nyckeln här. Be organisationens ägare godkänna den om GitHub begär det.</li></ol><p>Nyckeln sparas inte på enheten. Du behöver ange den igen när sidan laddas om.</p></details></main><footer>${icon('lock')} Privat material. Bara för dig med tillgång.</footer></div><div id="notice" class="notice" role="status" hidden></div>`;
+  $('#login-form').onsubmit = async event => {
+    event.preventDefault(); const button = event.target.querySelector('button'); button.disabled = true; button.textContent = 'Öppnar…'; $('#login-error').textContent = '';
+    const client = new GitHub($('#key').value.trim());
+    try { const result = await client.load(); api = client; files = result; $('#key').value = ''; workspace(); const welcome = files.find(f => /Valkommen\.md$/.test(f.path)) || files.find(f => isMarkdown(f.path)); if (welcome) await openFile(welcome); }
+    catch (error) { $('#login-error').textContent = error.message; button.disabled = false; button.textContent = 'Öppna materialet →'; }
+  };
+}
+function workspace() {
+  $('#app').innerHTML = `<header class="topbar"><a class="brand" href="#" aria-label="Knivsta IK Basket"><span class="brand-mark">${icon('ball')}</span><span>KNIVSTA IK <b>BASKETVERKSTAN</b></span></a><div class="top-actions"><span class="private-label">${icon('lock')} Vårt arbetsrum</span><button id="plan-toggle" class="secondary">Träningspass <span id="plan-count">0/6</span></button><button id="logout" class="plain">Logga ut</button></div></header><div class="workspace"><aside class="sidebar"><div class="sidebar-heading"><span class="eyebrow">VÅRT BIBLIOTEK</span><button class="icon-button" id="refresh" title="Hämta senaste materialet" aria-label="Hämta senaste materialet">↻</button></div><div class="library-title"><h2>Material</h2><button id="toggle-library" class="secondary">Visa filer</button></div><label class="search">${icon('search')}<input id="search" type="search" placeholder="Sök bland filer…" aria-label="Sök bland filer"></label><div class="filters"><button class="active" data-filter="all">Allt</button><button data-filter="exercises">Övningar</button><button data-filter="trainings">Träningar</button></div><nav id="tree" aria-label="Mappar och filer" tabindex="0"></nav><div class="recent-files"><span class="eyebrow">SENAST ÖPPNADE</span><div id="recents"></div></div><div class="sidebar-bottom"><button id="new-file" class="primary">${icon('plus')} Nytt dokument</button><button id="upload" class="secondary">${icon('upload')} Ladda upp filer</button><p>Gemensamt material.<br>Plats för fler idéer.</p></div></aside><main class="main"><div id="doc-bar" class="doc-bar"><span>Välj ett dokument i biblioteket</span></div><div id="format-bar" class="format-bar" hidden><select id="text-style" aria-label="Texttyp"><option value="0">Brödtext</option><option value="1">Rubrik 1</option><option value="2">Rubrik 2</option><option value="3">Rubrik 3</option><option value="4">Rubrik 4</option><option value="5">Rubrik 5</option><option value="6">Rubrik 6</option></select><span class="divider"></span><button data-format="bold" aria-label="Fetstil" title="Fetstil (Ctrl+B)"><b>B</b></button><button data-format="italic" aria-label="Kursiv" title="Kursiv (Ctrl+I)"><i>I</i></button><button id="text-color" aria-label="Textfärg" title="Textfärg"><span class="color-symbol">A</span></button><button data-format="underline" aria-label="Understruken" title="Understruken (Ctrl+U)"><u>U</u></button><span class="divider"></span><button data-format="bulletList" aria-label="Punktlista" title="Punktlista">☷</button><button data-format="orderedList" aria-label="Numrerad lista" title="Numrerad lista">1.</button><button id="link" aria-label="Infoga länk" title="Infoga länk">↗</button><button id="image" aria-label="Infoga bild" title="Infoga bild">▧</button><span class="divider"></span><button data-format="undo" aria-label="Ångra" title="Ångra">↶</button><button data-format="redo" aria-label="Gör om" title="Gör om">↷</button></div><div id="document-area" class="document-area"><div class="empty"><span class="empty-ball">${icon('ball')}</span><h1>Här börjar nästa träning.</h1><p>Öppna ett dokument till vänster<br>eller skapa något nytt.</p></div></div><footer class="document-footer"><span id="save-state">Allt material sparas hos föreningen</span><span id="word-count"></span></footer></main><aside id="planner" class="planner" hidden></aside></div><div id="notice" class="notice" role="status" hidden></div><input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>`;
+  $('#logout').onclick = () => { if (busy || !confirmLeave() || (planDirty && !confirm('Du har en osparad träning. Vill du lämna den?'))) return; clearPrivate(); login(); };
+  $('.brand').onclick = e => e.preventDefault();
+  $('#search').oninput = e => { query = e.target.value; renderTree(); };
+  document.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => { filter = button.dataset.filter; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b === button)); renderTree(); });
+  $('#refresh').onclick = async () => { if (busy || !confirmLeave()) return; const path = active?.path, client = api; try { const result = await client.load(); if (client !== api) return; files = result; cache.clear(); renderTree(); const found = files.find(f => f.path === path); if (found) await openFile(found, true); else resetDocument(); notice('Materialet är uppdaterat.'); } catch (error) { notice(error.message, true); } };
+  $('#toggle-library').onclick = () => { const collapsed = $('.sidebar').classList.toggle('collapsed'); $('#toggle-library').textContent = collapsed ? 'Visa filer' : 'Dölj filer'; };
+  $('#text-color').onclick = colorPalette;
+  $('#new-file').onclick = newDocument; $('#upload').onclick = uploadFiles;
+  $('#plan-toggle').onclick = () => { $('#planner').hidden = !$('#planner').hidden; renderPlan(); };
+  $('#text-style').onchange = e => { const level = Number(e.target.value); const chain = editor.chain().focus(); level ? chain.setHeading({ level }).run() : chain.setParagraph().run(); };
+  document.querySelectorAll('[data-format]').forEach(button => { button.onmousedown = e => e.preventDefault(); button.onclick = () => { const action = { bold: 'toggleBold', italic: 'toggleItalic', underline: 'toggleUnderline', bulletList: 'toggleBulletList', orderedList: 'toggleOrderedList', undo: 'undo', redo: 'redo' }[button.dataset.format]; editor.chain().focus()[action]().run(); }; });
+  $('#link').onclick = addLink; $('#image').onclick = () => $('#image-input').click();
+  $('#image-input').onchange = e => { [...e.target.files].forEach(file => addImage(file)); e.target.value = ''; };
+  renderTree(); renderPlan(); setupTreeTransfers();
+}
+function folderLabel(path) { const leaf = path.split('/').pop(); return ({ ovningar: 'Övningar', dokument: 'Dokument', traningar: 'Träningar', bilder: 'Bilder', 'Kom-igang': 'Kom igång' })[leaf] || leaf.replace(/-/g, ' '); }
+function renderTree() {
+  const visible = files.filter(f => (!query || f.path.toLocaleLowerCase('sv').includes(query.toLocaleLowerCase('sv'))) && (filter === 'all' || (filter === 'exercises' ? isExercise(f.path) : f.path.startsWith('traningar/'))));
+  const root = { folders: {}, files: [] };
+  if (!query) for (const path of api.current?.directories || []) { if (filter === 'exercises' && !/^(ovningar|övningar)(\/|$)/i.test(path)) continue; if (filter === 'trainings' && !/^traningar(\/|$)/.test(path)) continue; let node = root; for (const part of path.split('/')) node = node.folders[part] ||= { folders: {}, files: [] }; }
+  for (const file of visible) { const parts = file.path.split('/'); parts.pop(); let node = root; for (const part of parts) node = node.folders[part] ||= { folders: {}, files: [] }; node.files.push(file); }
+  const draw = (node, path = '') => Object.entries(node.folders).sort(([a], [b]) => a.localeCompare(b, 'sv')).map(([name, child]) => `<details open class="tree-folder" data-folder="${esc(`${path}${name}`)}"><summary>${icon('folder')}<span>${esc(folderLabel(name))}</span><button class="tree-download" data-download-folder="${esc(`${path}${name}`)}" aria-label="Ladda ner mapp ${esc(folderLabel(name))}" title="Ladda ner mapp">${icon('download')}</button></summary><div>${draw(child, `${path}${name}/`)}</div></details>`).join('') + node.files.sort((a, b) => a.path.localeCompare(b.path, 'sv')).map(file => `<div class="file-row"><button class="tree-file ${active?.path === file.path ? 'selected' : ''}" data-path="${esc(file.path)}" title="${esc(file.path)}">${icon('file')}<span>${esc(file.path.split('/').pop().replace(/\.(md|markdown)$/i, '').replace(/-/g, ' '))}</span>${isExercise(file.path) ? '<span class="exercise-dot" title="Övning"></span>' : ''}</button><button class="tree-download" data-download-file="${esc(file.path)}" aria-label="Ladda ner ${esc(file.path.split('/').pop())}" title="Ladda ner fil">${icon('download')}</button></div>`).join('');
+  $('#tree').innerHTML = `<details open class="tree-folder repo-root" data-folder=""><summary>${icon('folder')}<span>Basket</span><button class="tree-download" data-download-folder="" aria-label="Ladda ner hela Basket" title="Ladda ner hela Basket">${icon('download')}</button></summary><div>${(visible.length || Object.keys(root.folders).length) ? draw(root) : '<p class="tree-empty">Inga filer här ännu.</p>'}</div></details>`;
+  $('#tree').querySelectorAll('[data-path]').forEach(button => button.onclick = () => openFile(files.find(f => f.path === button.dataset.path)));
+  $('#tree').querySelectorAll('[data-download-file]').forEach(button => button.onclick = async () => { try { const file = files.find(f => f.path === button.dataset.downloadFile); download(await bytesOf(file), file.path.split('/').pop()); } catch (error) { notice(error.message, true); } });
+  $('#tree').querySelectorAll('[data-download-folder]').forEach(button => button.onclick = event => { event.preventDefault(); event.stopPropagation(); downloadFolder(button.dataset.downloadFolder); });
+  $('#tree').querySelectorAll('summary').forEach(summary => summary.addEventListener('click', () => { selectedFolder = summary.parentElement.dataset.folder; }));
+
+}
+async function bytesOf(file) { const client = api; if (!client) throw new Error('Du är utloggad.'); if (!cache.has(file.sha)) { const bytes = await client.read(file); if (client !== api) throw new Error('Sessionen har avslutats.'); cache.set(file.sha, bytes); } return cache.get(file.sha); }
+function resolvePath(documentPath, reference) {
+  if (/^[a-z][a-z\d+.-]*:/i.test(reference) || reference.startsWith('//')) return null;
+  try { const url = new URL(reference, `https://material.local/${documentPath}`); return decodeURIComponent(url.pathname.slice(1)); } catch { return null; }
+}
+function relativePath(from, to) { const source = from.split('/').slice(0, -1); const dest = to.split('/'); while (source[0] && source[0] === dest[0]) { source.shift(); dest.shift(); } return `${'../'.repeat(source.length)}${dest.join('/')}`; }
+async function prepareImages(content, documentPath) {
+  const references = [...content.matchAll(/!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)/g)].map(m => m[1]);
+  await Promise.all(references.map(async ref => { const path = resolvePath(documentPath, ref); if (!path || imageUrls.has(path)) return; const file = files.find(f => f.path === path); const mime = imageMime(path); if (!file || !mime) return; try { imageUrls.set(path, blobUrl(await bytesOf(file), mime)); } catch { /* Missing images do not prevent opening text. */ } }));
+}
+function imageMime(path) { const ext = path.split('.').pop().toLowerCase(); return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' })[ext]; }
+async function openFile(file, force = false) {
+  if (busy || (!force && !confirmLeave())) return;
+  const version = ++openVersion;
+  try {
+    const bytes = await bytesOf(file); if (version !== openVersion) return;
+    const content = isMarkdown(file.path) ? text(bytes) : '';
+    if (isMarkdown(file.path)) await prepareImages(content, file.path);
+    if (version !== openVersion) return;
+    sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; pendingImages.clear(); active = file; dirty = false; original = content; recents = [file.path, ...recents.filter(p => p !== file.path)].slice(0, 4); renderRecents(); renderTree(); renderDocBar();
+    if (isMarkdown(file.path)) mountEditor(content);
+    else if (isSheet(file.path)) {
+      $('#format-bar').hidden = true; $('#document-area').innerHTML = '<div id="sheet-view" class="sheet-view"></div>'; $('#document-area').classList.add('has-sheet');
+      const container = $('#sheet-view'); const { mountSheet } = await import('./sheet.js');
+      const result = await mountSheet(container, file, bytes, () => { dirty = true; updateStatus(); }, notice);
+      if (version !== openVersion) { result.destroy(); return; } sheet = result;
+    } else {
+      $('#format-bar').hidden = true;
+      const mime = imageMime(file.path);
+      $('#document-area').innerHTML = mime ? `<div class="paper attachment"><img src="${blobUrl(bytes, mime)}" alt="${esc(file.path.split('/').pop())}"></div>` : `<div class="empty">${icon('file')}<h2>${esc(file.path.split('/').pop())}</h2><p>Den här filen kan laddas ner.</p><button id="attachment-download" class="primary">Ladda ner fil</button></div>`;
+      if ($('#attachment-download')) $('#attachment-download').onclick = () => download(bytes, file.path.split('/').pop());
+    }
+    if (!isSheet(file.path)) $('#document-area').classList.remove('has-sheet');
+    if (matchMedia('(max-width:760px)').matches) { $('.sidebar').classList.add('collapsed'); $('#toggle-library').textContent = 'Visa filer'; }
+    updateStatus();
+  } catch (error) { notice(error.message, true); }
+}
+function mountEditor(content) {
+  sheet?.destroy(); sheet = null; $('#document-area').classList.remove('has-sheet');
+  $('#format-bar').hidden = false;
+  $('#document-area').innerHTML = '<article class="paper"><div id="editor"></div></article>';
+  const PrivateImage = Image.extend({ addAttributes() { return { ...this.parent?.(), src: { default: null, parseHTML: () => null, renderHTML: attributes => ({ src: imageUrls.get(resolvePath(active.path, attributes.src)) || '', loading: 'lazy' }) } }; } });
+  editor = new Editor({ element: $('#editor'), extensions: [StarterKit.configure({ link: { openOnClick: false, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', title: 'Ctrl+klicka för att öppna länken' } } }), PrivateImage, ...richExtensions(), Markdown], content, contentType: 'markdown', editorProps: { attributes: { 'aria-label': 'Dokumentets innehåll', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }, transformPastedHTML: html => DOMPurify.sanitize(html, { FORBID_TAGS: ['img', 'iframe', 'style', 'script', 'form'] }), handleDOMEvents: { copy: cacheCopy, cut: (view, event) => { if (!cacheCopy(view, event)) return false; view.dispatch(view.state.tr.deleteSelection().scrollIntoView()); return true; } }, handleKeyDown: (_view, event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); editor.commands.redo(); return true; } return false; }, handleClick: (_view, _pos, event) => { const anchor = event.target.closest('a'); if (!anchor || !(event.ctrlKey || event.metaKey)) return false; event.preventDefault(); openLink(anchor.getAttribute('href')); return true; }, handlePaste: (view, event) => {
+    const pastedFiles = [...(event.clipboardData?.files || [])];
+    if (pastedFiles.length) { event.preventDefault(); pastedFiles.forEach(addAttachment); return true; }
+    const id = event.clipboardData?.getData('application/x-knivsta-selection');
+    if (clipboardCache && id === clipboardCache.id && clipboardCache.path === active.path) { event.preventDefault(); view.dispatch(view.state.tr.replaceSelection(clipboardCache.slice).scrollIntoView()); return true; }
+    const plain = event.clipboardData?.getData('text/plain');
+    if (plain === undefined) return false;
+    event.preventDefault();
+    const paragraphs = plain.split(/\r?\n/).map(line => view.state.schema.nodes.paragraph.create(null, line ? view.state.schema.text(line) : null));
+    view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(paragraphs), 0, 0)).scrollIntoView()); return true;
+  }, handleDrop: (_view, event) => { const dropped = [...(event.dataTransfer?.files || [])]; if (!dropped.length) return false; event.preventDefault(); const position = _view.posAtCoords({ left: event.clientX, top: event.clientY }); if (position) editor.commands.setTextSelection(position.pos); dropped.forEach(addAttachment); return true; } }, onUpdate: () => { dirty = editor.getMarkdown() !== original || !active.sha; updateStatus(); }, onSelectionUpdate: updateToolbar });
+  // Compare against the normalized initial serialization so a click alone never changes a file.
+  original = editor.getMarkdown(); updateToolbar();
+}
+function updateToolbar() {
+  if (!editor) return;
+  $('#text-style').value = editor.isActive('heading') ? String(editor.getAttributes('heading').level) : '0';
+  document.querySelectorAll('[data-format]').forEach(button => { const on = editor.isActive(button.dataset.format); button.classList.toggle('on', on); button.setAttribute('aria-pressed', String(on)); });
+}
+function updateStatus() {
+  if (!$('#save-state')) return;
+  $('#save-state').textContent = busy ? 'Sparar…' : dirty ? 'Du har osparade ändringar' : active ? 'Alla ändringar är sparade' : 'Allt material sparas hos föreningen';
+  $('#save-state').classList.toggle('unsaved', dirty);
+  if ($('#save-doc')) $('#save-doc').disabled = busy || !dirty;
+  $('#word-count').textContent = editor ? `${editor.getText().trim().split(/\s+/).filter(Boolean).length} ord` : '';
+}
+function renderDocBar() {
+  $('#doc-bar').innerHTML = `<div class="breadcrumb">${icon('file')}<span>${esc(active.path.split('/').slice(0, -1).map(folderLabel).join(' / ') || 'Material')}</span><span>/</span><strong>${esc(titleOf(active.path))}</strong></div><div class="doc-actions">${isExercise(active.path) ? '<button id="add-plan" class="secondary">+ Till träning</button>' : ''}<button id="download-doc" class="icon-button" aria-label="Ladda ner dokument" title="Ladda ner dokument">${icon('download')}</button>${editablePath(active.path) ? '<button id="save-doc" class="primary compact" disabled>Spara ändringar</button>' : ''}</div>`;
+  if ($('#add-plan')) $('#add-plan').onclick = addToPlan;
+  $('#download-doc').onclick = async () => { if (editor) download(utf8.encode(editor.getMarkdown()), active.path.split('/').pop()); else if (sheet) download(await sheet.getBytes(), active.path.split('/').pop()); else download(await bytesOf(active), active.path.split('/').pop()); };
+  if ($('#save-doc')) $('#save-doc').onclick = saveDocument;
+}
+async function addImage(file) {
+  if (!editor || busy) return;
+  if (file.size > MAX_SIZE) return notice('Bilden får vara högst 5 MB.', true);
+  const mime = imageMime(file.name) || (/^image\/(png|jpeg|webp|gif)$/.test(file.type) ? file.type : null);
+  if (!mime) return notice('Välj en bild i PNG-, JPG-, WebP- eller GIF-format.', true);
+  const target = editor, documentPath = active.path;
+  const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[mime];
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (target !== editor || target.isDestroyed) return;
+  const path = `bilder/${crypto.randomUUID()}.${extension}`;
+  pendingImages.set(path, bytes); imageUrls.set(path, blobUrl(bytes, mime));
+  editor.chain().focus().setImage({ src: relativePath(documentPath, path), alt: file.name || 'Bild' }).run();
+}
+function addLink() {
+  if (!editor) return;
+  const current = editor.getAttributes('link').href || '';
+  dialog('Lägg till en länk', `<form><label>Webbadress<input name="url" type="url" placeholder="https://…" value="${esc(current)}"></label><p class="muted">Markera gärna texten som ska bli en länk först.</p><div class="dialog-actions"><button type="button" class="secondary" id="remove-link">Ta bort länk</button><button class="primary">Lägg till länk</button></div></form>`, node => {
+    node.querySelector('form').onsubmit = event => { event.preventDefault(); const url = node.querySelector('input').value.trim(); if (!/^https?:\/\//i.test(url)) return; editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run(); if (editor.state.selection.empty) editor.commands.insertContent(url); node.close(); };
+    node.querySelector('#remove-link').onclick = () => { editor.chain().focus().unsetLink().run(); node.close(); };
+  });
+}
+function newDocument() {
+  if (busy || !confirmLeave()) return;
+  dialog('Vad vill du skapa?', `<form><label>Namn<input name="name" placeholder="Till exempel: Passningar i rörelse" required maxlength="100"></label><label>Placering<select name="folder"><option value="ovningar">Övningar</option><option value="dokument">Dokument</option></select></label><div class="dialog-actions"><button class="primary">Skapa dokument</button></div></form>`, node => {
+    node.querySelector('form').onsubmit = event => {
+      event.preventDefault(); const name = node.querySelector('[name=name]').value.trim(); const path = `${node.querySelector('[name=folder]').value}/${slug(name)}.md`;
+      if (files.some(f => f.path === path)) return notice('Det namnet används redan. Välj ett annat.', true);
+      editor?.destroy(); pendingImages.clear(); active = { path, sha: null, exercise: isExercise(path) }; dirty = true; renderDocBar(); mountEditor(`# ${name}\n\n`); dirty = true; renderTree(); updateStatus(); node.close(); editor.commands.focus('end');
+    };
+  });
+}
+function resetDocument() { sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; active = null; dirty = false; pendingImages.clear(); $('#format-bar').hidden = true; $('#doc-bar').innerHTML = '<span>Välj ett dokument i biblioteket</span>'; $('#document-area').innerHTML = '<div class="empty"><h2>Välj ett dokument till vänster.</h2></div>'; updateStatus(); }
+async function saveDocument() {
+  if (sheet) { const target = active.path; const changes = [{ path: target, bytes: await sheet.getBytes(), baseSha: active.sha }]; commitDialog(changes, async () => { dirty = false; await reload(target); }); return; }
+  const content = editor.getMarkdown(); const changes = [{ path: active.path, bytes: utf8.encode(content), baseSha: active.sha }];
+  for (const [path, bytes] of pendingImages) if (content.includes(relativePath(active.path, path))) changes.push({ path, bytes, baseSha: null });
+  commitDialog(changes, async () => { const path = active.path; dirty = false; pendingImages.clear(); await reload(path); });
+}
+async function reload(path) { const client = api; const result = await client.load(); if (client !== api) return; files = result; cache.clear(); renderTree(); if (path) { const file = files.find(f => f.path === path); if (file) await openFile(file, true); } }
+function commitDialog(changes, after) {
+  const node = dialog('Spara ändringar', `<form><p>${changes.length === 1 ? 'Ditt dokument' : `Dina ${changes.length} filer`} sparas i föreningens gemensamma material.</p><details class="save-files"><summary>Visa filer som sparas</summary><ul>${changes.map(change => `<li>${esc(change.path)}</li>`).join('')}</ul></details><label>Vad har du ändrat?<textarea name="message" placeholder="Till exempel: Förtydligade instruktionerna och lade till en bild" rows="3" required maxlength="500"></textarea></label><p class="muted">Beskrivningen hjälper oss att följa hur materialet utvecklas.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary cancel-save">Avbryt</button><button type="submit" class="primary">Spara ändringar</button></div></form>`);
+  node.querySelector('.cancel-save').onclick = () => node.close();
+  node.querySelector('form').onsubmit = async event => {
+    event.preventDefault(); if (busy) return; busy = true; updateStatus(); const submit = node.querySelector('[type=submit]'); submit.disabled = true; submit.textContent = 'Sparar…'; const close = node.querySelector('.close'); close.disabled = true; node.querySelector('.cancel-save').disabled = true;
+    const blockClose = event => event.preventDefault(); node.addEventListener('cancel', blockClose);
+    editor?.setEditable(false);
+    try {
+      await api.save(changes, node.querySelector('textarea').value, resolveConflict);
+      busy = false; editor?.setEditable(true); node.close(); await after(); notice('Sparat! Materialet är uppdaterat.');
+    } catch (error) { node.querySelector('.form-error').textContent = error.message; }
+    finally { busy = false; editor?.setEditable(true); submit.disabled = false; submit.textContent = 'Spara ändringar'; close.disabled = false; node.querySelector('.cancel-save').disabled = false; node.removeEventListener('cancel', blockClose); updateStatus(); }
+  };
+}
+function resolveConflict(conflict) {
+  return new Promise(resolve => {
+    let answered = false;
+    const node = dialog('Någon annan har också ändrat', `<p><strong>${esc(titleOf(conflict.path))}</strong> har ändrats sedan du öppnade det. ${conflict.deleted ? 'Den sparade filen har tagits bort.' : 'Välj hur ni vill gå vidare.'}</p>${conflict.markdown ? '<div class="versions"><section><h3>Din version</h3><div id="local-version"></div></section><section><h3>Den sparade versionen</h3><div id="remote-version"></div></section></div><label>Den gemensamma versionen</label><div id="resolved" class="merge-editor"></div><p class="muted">Skriv den version ni vill behålla. Du kan kopiera formuleringar från båda versionerna ovan.</p>' : '<p>Det här är en bilaga. Behåll din fil, eller avbryt och hämta den sparade filen.</p>'}<div class="dialog-actions"><button class="secondary" id="cancel-merge">Avbryt sparning</button><button class="primary" id="resolve-merge">${conflict.markdown ? 'Använd gemensam version' : 'Behåll min fil'}</button></div>`);
+    const views = [];
+    if (conflict.markdown) {
+      node.classList.add('merge-dialog');
+      const SafeImage = Image.extend({ addAttributes() { return { ...this.parent?.(), src: { default: null, renderHTML: attributes => ({ src: imageUrls.get(resolvePath(conflict.path, attributes.src)) || '' }) } }; } });
+      for (const [id, content, editable] of [['local-version', text(conflict.local), false], ['remote-version', text(conflict.remote), false], ['resolved', text(conflict.local), true]]) {
+        views.push(new Editor({ element: node.querySelector(`#${id}`), extensions: [StarterKit.configure({ link: { openOnClick: false } }), SafeImage, ...richExtensions(), Markdown], content, contentType: 'markdown', editable, editorProps: { attributes: { 'aria-label': id === 'resolved' ? 'Den gemensamma versionen' : id === 'local-version' ? 'Din version' : 'Den sparade versionen' }, handleKeyDown: (_view, event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); views[2].commands.redo(); return true; } return false; } } }));
+      }
+    }
+    node.querySelector('#cancel-merge').onclick = () => node.close();
+    node.querySelector('#resolve-merge').onclick = () => { answered = true; resolve(conflict.markdown ? utf8.encode(views[2].getMarkdown()) : conflict.local); node.close(); };
+    node.addEventListener('close', () => { views.forEach(view => view.destroy()); if (!answered) resolve(null); });
+  });
+}
+
+function uploadFiles() {
+  if (busy) return;
+  dialog('Lägg till material', `<form><label>Placering<select name="folder"><option value="ovningar">Övningar</option><option value="dokument">Dokument</option><option value="">Basket</option></select></label><label class="file-pick">Välj filer<input type="file" name="files" multiple></label><label class="file-pick">Eller välj en hel mapp<input type="file" name="folders" webkitdirectory multiple></label><p class="muted">Word-filer (.docx) får också en redigerbar dokumentkopia. Mappstrukturen följer med. Högst 200 filer, 5 MB per fil och 50 MB totalt.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button class="primary">Fortsätt</button></div></form>`, node => {
+    node.querySelector('form').onsubmit = async event => {
+      event.preventDefault();
+      const uploaded = [...node.querySelector('[name=files]').files, ...node.querySelector('[name=folders]').files];
+      if (!uploaded.length) { node.querySelector('.form-error').textContent = 'Välj filer eller en mapp först.'; return; }
+      const folder = node.querySelector('select').value;
+      try { node.close(); await stageUploads(uploaded.map(file => ({ file, path: file.webkitRelativePath || file.name })), folder); }
+      catch (error) { notice(error.message, true); }
+    };
+  });
+}
+
+async function addToPlan() {
+  if (plan.length >= 6) return notice('Träningen har redan sex övningar. Ta bort en för att lägga till en annan.', true);
+  if (dirty || !active.sha) return notice('Spara övningen först, så att träningen använder det gemensamma materialet.', true);
+  if (plan.some(e => e.path === active.path)) return notice('Övningen finns redan i träningen.');
+  const content = text(await bytesOf(active));
+  planDirty = true; plan.push({ path: active.path, title: titleOf(active.path, content), content, minutes: 10 });
+  $('#planner').hidden = false; renderPlan(); notice('Övningen är tillagd i träningen.');
+}
+function renderPlan() {
+  if (!$('#planner')) return;
+  $('#plan-count').textContent = `${plan.length}/6`;
+  const count = plan.length, total = plan.reduce((sum, e) => sum + e.minutes, 0);
+  $('#planner').innerHTML = `<div class="planner-heading"><span class="eyebrow">NÄSTA PASS</span><button class="icon-button" id="close-plan" aria-label="Stäng träningspass">×</button></div><h2>Din träning</h2><p class="muted">Välj 4–6 övningar ur materialet.</p><label>Träningens namn<input id="plan-name" placeholder="Till exempel: Tisdagsträning" value="${esc(planTitle)}" maxlength="100"></label><div class="plan-items">${count ? plan.map((entry, i) => `<article class="plan-item"><span class="plan-number">${i + 1}</span><div><strong>${esc(entry.title)}</strong><label class="minutes"><input type="number" min="1" max="180" value="${entry.minutes}" data-minutes="${i}" aria-label="Minuter för ${esc(entry.title)}"> min</label></div><div class="plan-order"><button data-up="${i}" ${i === 0 ? 'disabled' : ''} aria-label="Flytta upp ${esc(entry.title)}">↑</button><button data-down="${i}" ${i === count - 1 ? 'disabled' : ''} aria-label="Flytta ner ${esc(entry.title)}">↓</button><button data-remove="${i}" aria-label="Ta bort ${esc(entry.title)}">×</button></div></article>`).join('') : '<div class="plan-empty">Öppna en övning och välj<br><strong>+ Till träning</strong></div>'}</div><label>Att tänka på<textarea id="plan-notes" rows="3" placeholder="Grupp, fokus eller något att förbereda…">${esc(planNotes)}</textarea></label><div class="plan-total"><span>${count} av 4–6 övningar</span><strong id="plan-total">${total} min</strong></div><button id="save-plan" class="primary" ${count < 4 ? 'disabled' : ''}>Spara träning</button><button id="export-plan" class="secondary" ${count < 4 ? 'disabled' : ''}>${icon('download')} Ladda ner träning</button>`;
+  $('#close-plan').onclick = () => { $('#planner').hidden = true; };
+  $('#plan-name').oninput = e => { planTitle = e.target.value; planDirty = true; }; $('#plan-notes').oninput = e => { planNotes = e.target.value; planDirty = true; };
+  $('#planner').querySelectorAll('[data-minutes]').forEach(input => input.onchange = () => { planDirty = true; plan[Number(input.dataset.minutes)].minutes = Math.max(1, Math.min(180, Number(input.value) || 10)); input.value = plan[Number(input.dataset.minutes)].minutes; $('#plan-total').textContent = `${plan.reduce((sum, e) => sum + e.minutes, 0)} min`; });
+  $('#planner').querySelectorAll('[data-remove]').forEach(button => button.onclick = () => { planDirty = true; plan.splice(Number(button.dataset.remove), 1); renderPlan(); });
+  for (const direction of ['up', 'down']) $('#planner').querySelectorAll(`[data-${direction}]`).forEach(button => button.onclick = () => { const i = Number(button.dataset[direction]), j = i + (direction === 'up' ? -1 : 1); planDirty = true; [plan[i], plan[j]] = [plan[j], plan[i]]; renderPlan(); });
+  $('#export-plan').onclick = () => { try { download(utf8.encode(trainingMarkdown(planTitle, planNotes, plan)), `${slug(planTitle || 'traningspass')}.md`); } catch (error) { notice(error.message, true); } };
+  $('#save-plan').onclick = () => {
+    if (busy || !confirmLeave()) return;
+    const name = planTitle.trim() || 'Träningspass'; const path = `traningar/${slug(name)}.md`;
+    if (files.some(f => f.path === path) && !confirm('En träning med det namnet finns redan. Vill du uppdatera den?')) return;
+    try { const content = trainingMarkdown(name, planNotes, plan); commitDialog([{ path, bytes: utf8.encode(content), baseSha: files.find(f => f.path === path)?.sha || null }], async () => { dirty = false; planDirty = false; await reload(path); }); } catch (error) { notice(error.message, true); }
+  };
+}
+function download(bytes, name) { const url = blobUrl(bytes, 'application/octet-stream'); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); setTimeout(() => { URL.revokeObjectURL(url); objectUrls.delete(url); }, 1000); }
+window.addEventListener('beforeunload', event => { if (dirty || planDirty || busy) { event.preventDefault(); event.returnValue = ''; } });
+login();
+
+function renderRecents() {
+  if (!$('#recents')) return;
+  $('#recents').innerHTML = recents.map(path => `<button class="recent-file" data-recent="${esc(path)}">${icon('file')}<span>${esc(titleOf(path))}</span></button>`).join('') || '<p class="muted">Dina senaste filer visas här.</p>';
+  $('#recents').querySelectorAll('button').forEach(button => button.onclick = () => { const file = files.find(f => f.path === button.dataset.recent); if (file) openFile(file); });
+}
+function cacheCopy(view, event) {
+  if (view.state.selection.empty || !event.clipboardData) return false;
+  const slice = view.state.selection.content();
+  const plain = slice.content.textBetween(0, slice.content.size, '\n');
+  const id = crypto.randomUUID();
+  clipboardCache = { id, path: active.path, slice, markdown: editor.markdown.serialize(slice.content.toJSON()) };
+  event.clipboardData.setData('text/plain', plain);
+  event.clipboardData.setData('application/x-knivsta-selection', id);
+  event.preventDefault(); return true;
+}
+async function addAttachment(file) {
+  if (imageMime(file.name) || /^image\/(png|jpeg|webp|gif)$/.test(file.type)) return addImage(file);
+  if (!editor || busy) return;
+  if (file.size > MAX_SIZE) return notice('Filen får vara högst 5 MB.', true);
+  const target = editor, documentPath = active.path;
+  const safeName = file.name.replace(/[^a-zA-Z0-9åäöÅÄÖ._-]/g, '-').replace(/^\.+/, '') || 'bilaga';
+  const path = `bilagor/${crypto.randomUUID()}-${safeName}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (target !== editor || target.isDestroyed) return;
+  pendingImages.set(path, bytes);
+  editor.chain().focus().insertContent({ type: 'text', text: file.name || 'Bilaga', marks: [{ type: 'link', attrs: { href: relativePath(documentPath, path), target: null } }] }).run();
+  notice('Bilagan läggs till när du sparar dokumentet.');
+}
+async function openLink(href) {
+  if (/^https?:\/\//i.test(href)) { window.open(href, '_blank', 'noopener,noreferrer'); return; }
+  const path = resolvePath(active.path, href), file = files.find(f => f.path === path);
+  if (!file) { notice('Spara dokumentet för att kunna öppna den nya bilagan.'); return; }
+  if (isMarkdown(path)) return openFile(file);
+  try { download(await bytesOf(file), path.split('/').pop()); } catch (error) { notice(error.message, true); }
+}
+
+function setupTreeTransfers() {
+  const tree = $('#tree');
+  tree.addEventListener('dragover', event => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; tree.classList.add('drop-target'); } });
+  tree.addEventListener('dragleave', event => { if (!tree.contains(event.relatedTarget)) tree.classList.remove('drop-target'); });
+  tree.addEventListener('drop', async event => {
+    event.preventDefault(); event.stopPropagation(); tree.classList.remove('drop-target'); if (busy) return;
+    const destination = event.target.closest('[data-folder]')?.dataset.folder ?? '';
+    const entries = [...event.dataTransfer.items].filter(i => i.kind === 'file').map(i => i.webkitGetAsEntry?.());
+    const fallback = [...event.dataTransfer.files];
+    try {
+      const uploads = entries.some(Boolean) ? (await Promise.all(entries.filter(Boolean).map(entry => walkEntry(entry)))).flat() : fallback.map(file => ({ file, path: file.name }));
+      await stageUploads(uploads, destination);
+    } catch (error) { notice(error.message, true); }
+  });
+  tree.addEventListener('paste', async event => {
+    const pasted = [...(event.clipboardData?.files || [])]; if (!pasted.length || busy) return;
+    event.preventDefault(); event.stopPropagation();
+    try { await stageUploads(pasted.map(file => ({ file, path: file.name })), selectedFolder); } catch (error) { notice(error.message, true); }
+  });
+}
+async function walkEntry(entry, parent = '', result = []) {
+  const path = `${parent}${entry.name}`;
+  if (entry.isFile) {
+    if (result.length >= 200) throw new Error('Välj högst 200 filer åt gången.');
+    const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+    result.push({ file, path }); return result;
+  }
+  if (entry.isDirectory) {
+    const reader = entry.createReader();
+    while (true) {
+      const children = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      if (!children.length) break;
+      for (const child of children) await walkEntry(child, `${path}/`, result);
+    }
+  }
+  return result;
+}
+async function stageUploads(uploads, folder = '') {
+  if (busy) return;
+  const client = api;
+  if (!uploads.length) throw new Error('Mappen innehåller inga filer. Tomma mappar sparas inte.');
+  if (uploads.length > 200 || uploads.some(({ file }) => file.size > MAX_SIZE) || uploads.reduce((sum, { file }) => sum + file.size, 0) > 50 * 1024 * 1024) throw new Error('Välj högst 200 filer, 5 MB per fil och 50 MB totalt.');
+  const paths = uploads.map(({ path }) => `${folder ? `${folder}/` : ''}${path}`);
+  if (paths.some(path => !validPath(path)) || new Set(paths).size !== paths.length) throw new Error('Någon fil har ett ogiltigt eller dubblerat namn. Dolda filer stöds inte.');
+  const replaced = paths.filter(path => files.some(file => file.path === path));
+  if (replaced.length && !confirm(`Dessa filer finns redan och ersätts när du sparar:\n${replaced.slice(0, 10).join('\n')}${replaced.length > 10 ? '\n…' : ''}\n\nVill du fortsätta?`)) return;
+  let changes = await Promise.all(uploads.map(async ({ file }, i) => ({ path: paths[i], bytes: new Uint8Array(await file.arrayBuffer()), baseSha: files.find(existing => existing.path === paths[i])?.sha || null })));
+  const words = changes.filter(change => /\.docx$/i.test(change.path));
+  if (words.length) {
+    notice('Gör Word-filerna till redigerbara dokument…');
+    const { convertWord } = await import('./word.js');
+    for (const word of words) {
+      const converted = await convertWord(word.bytes, word.path);
+      if (changes.some(change => change.path === converted.path)) throw new Error('Uppladdningen innehåller redan ett dokument med samma namn som Word-kopian. Välj ett annat namn.');
+      const existing = files.find(file => file.path === converted.path);
+      if (existing && !confirm(`Dokumentet ${converted.path} finns redan. Vill du ersätta det med Word-kopian?`)) return;
+      changes.push({ path: converted.path, bytes: converted.bytes, baseSha: existing?.sha || null }, ...converted.images);
+      if (converted.warnings.length) notice('Word-filen är konverterad. Vissa Word-detaljer kan ha förenklats. Originalfilen sparas också.');
+    }
+  }
+  if (client !== api) return;
+  commitDialog(changes, async () => { await reload(); });
+}
+async function downloadFolder(folder) {
+  const client = api;
+  const inside = files.filter(file => !folder || file.path.startsWith(`${folder}/`));
+  if (!inside.length) return notice('Mappen är tom.');
+  if (inside.some(f => f.size > MAX_SIZE) || inside.reduce((sum, f) => sum + f.size, 0) > 50 * 1024 * 1024) return notice('Mappen är för stor för att laddas ner här. Hämta den via GitHub.', true);
+  notice('Förbereder mappen för nedladdning…');
+  try {
+    const zipped = {};
+    for (const file of inside) zipped[file.path.slice(folder ? folder.length + 1 : 0)] = await bytesOf(file);
+    if (client !== api) return;
+    download(zipSync(zipped), `${folder ? folder.split('/').pop() : 'Basket'}.zip`);
+    notice('Mappen är klar för nedladdning.');
+  } catch (error) { notice(error.message, true); }
+}
+
+function colorPalette() {
+  const colors = [['Standard',''],['Röd','#c84d4d'],['Orange','#bb681e'],['Grön','#35825a'],['Blå','#397bb8'],['Lila','#8a60bc']];
+  dialog('Välj textfärg', `<p>Markera text och välj en färg.</p><div class="color-palette">${colors.map(([name,color])=>`<button class="color-choice" data-color="${color}" aria-label="${name}"><span style="background:${color||'var(--ink)'}"></span>${name}</button>`).join('')}</div>`, node => {
+    node.querySelectorAll('[data-color]').forEach(button => button.onclick = () => { const color = button.dataset.color; color ? editor.chain().focus().setColor(color).run() : editor.chain().focus().unsetColor().run(); node.close(); });
+  });
+}
