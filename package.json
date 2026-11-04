@@ -7,8 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build --base=./",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test src/model.test.js",
-    "test:browser": "playwright test"
+    "test": "node --test src/model.test.js src/access.test.js",
+    "test:browser": "playwright test",
+    "configure-access": "node scripts/configure-access.mjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.32.2",

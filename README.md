@@ -1,12 +1,26 @@
-# Basketverkstan · Knivsta IK
+# Material · Knivsta IK
 
 En enkel gemensam skrivyta för föreningens dokument, övningar och träningspass. Materialet läses och sparas direkt i det privata repot `Knivsta-IK/Basket`. Det här publika repot innehåller bara webbgränssnittet.
 
 ## Använd sidan
 
-Öppna webbplatsen och ange en personlig GitHub-token. Den behöver endast tillgång till `Knivsta-IK/Basket`, med **Contents: Read and write**. Kontoägaren måste redan ha rätt att skriva i det privata repot. En stegvis guide finns vid inloggningen. Detta är tokenbaserad åtkomst, inte ett separat gemensamt lösenord.
+Öppna webbplatsen, skriv ditt namn och det gemensamma lösenordet. Lösenordet låser upp en krypterad repo-begränsad åtkomstnyckel lokalt i webbläsaren. Produktens sidor visar inga instruktioner om den underliggande lagringen.
 
-Token och material hålls i minnet, aldrig i localStorage, sessionStorage, URL:er eller loggar. När du loggar ut rensas arbetsytan. Sidans källkod är publik; det privata materialet hämtas bara efter autentisering direkt från GitHub. Ange aldrig token i källkoden. Förlorade eller utgångna token ersätts via GitHub.
+Åtkomstnyckeln hålls i minnet under sessionen, aldrig i localStorage, sessionStorage, URL:er eller loggar. Lösenordet sparas inte av appen. Utloggning rensar arbetsytan. Varje sparning får det angivna namnet som author och committer, med en syntetisk adress under den reserverade domänen `material.invalid`. Namn är själv angivna och utgör inte verifierade identiteter. Alla med det delade lösenordet har samma läs- och skrivrättigheter; bakomliggande åtkomst och revisionslogg tillhör nyckelns ägare.
+
+## Aktivera lösenordet
+
+Skapa en **fine-grained GitHub-token** med resource owner **Knivsta-IK**, endast repot **Basket**, och **Contents: Read and write**. Använd inte en bred administratörstoken. Välj giltighetstid och godkänn eventuell väntande organisationsförfrågan.
+
+Kör lokalt i detta repo:
+
+```sh
+npm run configure-access -- --publish
+```
+
+Skriv nyckeln och en unik lösenfras med minst 16 tecken i terminalens dolda inmatning. Längre, slumpmässiga lösenfraser rekommenderas eftersom den publika krypterade filen kan utsättas för lösenordsgissning offline. Kommandot verifierar att materialet går att öppna, och skriver endast `public/access.json`: AES-256-GCM med slumpmässig 96-bitars IV, 256-bitars salt, PBKDF2-SHA256 med 600 000 iterationer och versionsbunden authenticated data. Varken lösenord eller okrypterad nyckel skrivs till disk. `--publish` committar endast den krypterade konfigurationen och pushar för publicering. Utan flaggan skapas filen lokalt.
+
+Utan konfiguration går inget lösenord att använda. Vid utgången nyckel konfigureras en ny. När ett lösenord eller en nyckel behöver återkallas måste den gamla nyckeln återkallas i GitHub; tidigare publicerad krypterad data kan finnas kvar i historiken. Lösenordsbyte utan nyckelrotation återkallar inte någon som redan låst upp den gamla nyckeln. Webbläsarbaserad kryptering döljer inte nyckeln för en person som känner lösenordet och undersöker sin egen session.
 
 - Filträd till vänster; en gemensam läs- och skrivyta till höger.
 - Rubriker, fetstil, kursiv, understrykning, länkar, listor och inklistrade bilder.

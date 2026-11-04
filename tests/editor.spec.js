@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { zipSync, strToU8 } from 'fflate';
+import { sealAccess } from '../src/access.js';
+const accessPromise = sealAccess('github_pat_fake', 'en testfras med fyra ord');
 import ExcelJS from 'exceljs/dist/exceljs.min.js';
 const contents = { 'dokument/schema.csv': 'Namn;Tid\r\nPassningar;10\r\nSkott;15', 'dokument/start.md': '# Välkommen\n\nDet här är materialet.', 'ovningar/ett.md': '# Övning ett\n\nTräna passningar.', 'ovningar/tva.md': '# Övning två\n\nTräna rörelse.', 'ovningar/tre.md': '# Övning tre\n\nTräna skott.', 'ovningar/fyra.md': '# Övning fyra\n\nTräna tillsammans.' };
 let writes, stored;
@@ -16,7 +18,8 @@ test.beforeEach(async ({ page }) => {
     else if (path.startsWith('/git/blobs/')) { const index = Number(path.split('-').pop()); data = { content: Buffer.from(Object.values(stored)[index]).toString('base64') }; }
     await route.fulfill({ json: data });
   });
-  await page.goto('/'); await page.getByLabel('Din åtkomstnyckel', { exact: true }).fill('github_pat_fake'); await page.getByRole('button', { name: 'Öppna materialet' }).click(); await expect(page.locator('.tiptap')).toBeVisible();
+  await page.route('**/access.json', async route => route.fulfill({json:await accessPromise}));
+  await page.goto('/'); await page.getByLabel('Ditt namn', {exact:true}).fill('Anna Andersson'); await page.getByLabel('Lösenord', {exact:true}).fill('en testfras med fyra ord'); await page.getByRole('button', {name:'Öppna biblioteket'}).click(); await expect(page.locator('.tiptap')).toBeVisible();
 });
 test('en skrivyta, rubriker, formatering och ångra/gör om', async ({ page }) => {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -30,6 +33,8 @@ test('en skrivyta, rubriker, formatering och ångra/gör om', async ({ page }) =
   await page.getByLabel('Vad har du ändrat?').fill('Förtydligar materialet'); await page.locator('dialog').getByRole('button', { name: 'Spara ändringar', exact: true }).click();
   await expect(page.locator('dialog')).toHaveCount(0);
   expect(writes.find(w => w.path === '/git/commits').body.message).toBe('Förtydligar materialet');
+  expect(writes.find(w => w.path === '/git/commits').body.author.name).toBe('Anna Andersson');
+  expect(writes.find(w => w.path === '/git/commits').body.committer.name).toBe('Anna Andersson');
   expect(writes.at(-1).body.force).toBe(false); expect(errors).toEqual([]);
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
 });
@@ -62,7 +67,7 @@ test('mobil och privat material rensas vid utloggning', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: '/tmp/basket-mobile.png', fullPage: true });
-  await page.getByRole('button', { name: 'Logga ut' }).click(); await expect(page.locator('.tiptap')).toHaveCount(0); await expect(page.locator('#key')).toHaveValue(''); await expect(page.locator('#recents')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Logga ut' }).click(); await expect(page.locator('.tiptap')).toHaveCount(0); await expect(page.locator('#password')).toHaveValue(''); await expect(page.locator('#recents')).toHaveCount(0);
 });
 test('filer och mappar kan klistras in eller släppas i filträdet', async ({ page }) => {
   const tree = page.locator('#tree');
@@ -102,7 +107,7 @@ test('färgad text sparas och kan läsas igen i mörkt och ljust tema', async ({
   const markdown = Buffer.from(writes.find(w => w.path === '/git/blobs').body.content, 'base64').toString('utf8'); expect(markdown).toContain('<span style="color: #397bb8">');
   stored['dokument/start.md'] = markdown; await page.getByRole('button', { name: 'Hämta senaste materialet' }).click();
   await expect(editor.locator('span[style]')).toHaveCSS('color', 'rgb(57, 123, 184)');
-  await page.emulateMedia({ colorScheme: 'dark' }); await expect(page.locator('.paper')).toHaveCSS('background-color', 'rgb(34, 45, 38)');
+  await page.emulateMedia({ colorScheme: 'dark' }); await expect(page.locator('.paper')).toHaveCSS('background-color', 'rgb(24, 24, 27)');
   await page.screenshot({ path: '/tmp/basket-dark.png', fullPage: true });
   await page.emulateMedia({ colorScheme: 'light' }); await expect(page.locator('.paper')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
 });
@@ -132,4 +137,10 @@ test('Excel-blad kan öppnas och sparas med redigerade celler', async ({ page })
   await page.getByRole('gridcell',{name:'B2',exact:true}).click();await page.keyboard.type('12');await page.keyboard.press('Enter');await page.getByRole('button',{name:'Grupp B',exact:true}).click();await expect(page.getByRole('gridcell',{name:'A1',exact:true})).toHaveText('Andra gruppen');
   await page.getByRole('button',{name:'Spara ändringar',exact:true}).click();await page.getByLabel('Vad har du ändrat?').fill('Uppdaterar antalet bollar');await page.locator('dialog').getByRole('button',{name:'Spara ändringar',exact:true}).click();await expect(page.locator('dialog')).toHaveCount(0);
   const saved=new ExcelJS.Workbook();await saved.xlsx.load(Buffer.from(writes.find(w=>w.path==='/git/blobs').body.content,'base64'));expect(saved.getWorksheet('Grupp A').getCell('B2').value).toBe(12);expect(saved.getWorksheet('Grupp B').getCell('A1').value).toBe('Andra gruppen');
+});
+
+test('inloggning visar bara namn och lösenord och fel lösenord når inte materialet', async ({ page }) => {
+  await page.getByRole('button',{name:'Logga ut'}).click();
+  expect(await page.locator('body').innerText()).not.toMatch(/github|token|åtkomstnyckel/i);
+  await page.getByLabel('Ditt namn',{exact:true}).fill('Anna Andersson');await page.getByLabel('Lösenord',{exact:true}).fill('fel lösenord');await page.getByRole('button',{name:'Öppna biblioteket'}).click();await expect(page.locator('#login-error')).toContainText('Fel lösenord');await expect(page.locator('.tiptap')).toHaveCount(0);await expect(page.locator('#password')).toHaveValue('');
 });

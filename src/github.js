@@ -19,12 +19,12 @@ export function mergeText(local, base, remote) {
   return { conflict: result.conflict, text: result.result.join('\n') };
 }
 export class GitHub {
-  constructor(token) { this.token = token; }
+  constructor(token, name = '') { this.token = token; this.authorName = name.trim().replace(/\s+/g, ' '); }
   async request(path, options = {}) {
     const response = await fetch(`${ROOT}${path}`, { ...options, headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${this.token}`, 'X-GitHub-Api-Version': '2022-11-28', ...(options.body ? { 'Content-Type': 'application/json' } : {}) }, cache: 'no-store' });
     if (!response.ok) {
-      const messages = { 401: 'Nyckeln är ogiltig eller har gått ut.', 403: 'Du saknar behörighet, eller har gjort för många förfrågningar. Kontrollera din åtkomst och försök igen.', 404: 'Materialet är inte åtkomligt. Kontrollera att din nyckel har tillgång till Knivsta-IK/Basket.', 409: 'Materialet har ändrats. Försök spara igen.', 422: 'Det gick inte att spara. Materialet kan ha ändrats under tiden.' };
-      const error = new Error(messages[response.status] || 'GitHub kunde inte nås. Kontrollera anslutningen och försök igen.');
+      const messages = { 401: 'Åtkomsten behöver förnyas. Kontakta ansvarig.', 403: 'Du saknar behörighet, eller har gjort för många förfrågningar. Försök igen senare eller kontakta ansvarig.', 404: 'Materialet är inte tillgängligt just nu. Kontakta ansvarig.', 409: 'Materialet har ändrats. Försök spara igen.', 422: 'Det gick inte att spara. Materialet kan ha ändrats under tiden.' };
+      const error = new Error(messages[response.status] || 'Materialet kunde inte hämtas. Kontrollera anslutningen och försök igen.');
       error.status = response.status;
       throw error;
     }
@@ -45,7 +45,7 @@ export class GitHub {
     return snapshot.files;
   }
   async read(file) {
-    if (file.size > MAX_SIZE) throw new Error('Filen är större än 5 MB. Öppna den via GitHub i stället.');
+    if (file.size > MAX_SIZE) throw new Error('Filen är större än 5 MB och kan inte öppnas här.');
     const blob = await this.request(`/git/blobs/${file.sha}`);
     return decode(blob.content);
   }
@@ -77,7 +77,8 @@ export class GitHub {
         entries.push({ path: change.path, mode: '100644', type: 'blob', sha: blob.sha });
       }
       const tree = await this.request('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: latest.tree, tree: entries }) });
-      const commit = await this.request('/git/commits', { method: 'POST', body: JSON.stringify({ message: message.trim(), tree: tree.sha, parents: [latest.head] }) });
+      const author = this.authorName ? { name: this.authorName, email: `${this.authorName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'anvandare'}@material.invalid` } : undefined;
+      const commit = await this.request('/git/commits', { method: 'POST', body: JSON.stringify({ message: message.trim(), tree: tree.sha, parents: [latest.head], ...(author ? { author, committer: author } : {}) }) });
       try {
         await this.request(`/git/refs/heads/${encodeURIComponent(this.branch)}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha, force: false }) });
         return commit;
