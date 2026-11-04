@@ -38,12 +38,13 @@ export class GitHub {
     return { head: ref.object.sha, tree: commit.tree.sha, directories: tree.tree.filter(f => f.type === 'tree' && validPath(f.path)).map(f => f.path), files: tree.tree.filter(f => f.type === 'blob' && validPath(f.path)).map(f => ({ ...f, exercise: isExercise(f.path) })) };
   }
   async load() {
-    const repository = await this.request('');
-    this.branch = repository.default_branch;
-    const snapshot = await this.snapshot();
-    this.current = snapshot;
-    return snapshot.files;
+    if (!this.branch) this.branch = (await this.request('')).default_branch;
+    const tree = await this.request(`/git/trees/${encodeURIComponent(this.branch)}?recursive=1`);
+    if (tree.truncated) throw new Error('Biblioteket är för stort. Be föreningens administratör om hjälp.');
+    this.current = { directories: tree.tree.filter(file=>file.type==='tree'&&validPath(file.path)).map(file=>file.path), files: tree.tree.filter(file=>file.type==='blob'&&validPath(file.path)).map(file=>({...file,exercise:isExercise(file.path)})) };
+    return this.current.files;
   }
+
   async read(file, options = {}) {
     if (file.size > MAX_SIZE) throw new Error('Filen är större än 5 MB och kan inte öppnas här.');
     const blob = await this.request(`/git/blobs/${file.sha}`, options);

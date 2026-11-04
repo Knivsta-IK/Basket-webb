@@ -23,7 +23,7 @@ async function store(action) {
   });
 }
 export async function rememberSession(name,session) {
-  await store({version:1,name,key:session.key,ciphertext:session.ciphertext});
+  await store({version:1,name,key:session.key,ciphertext:session.ciphertext,envelope:session.envelope});
 }
 export async function forgetSession() { await store('clear'); }
 export async function restoreSession() {
@@ -31,8 +31,11 @@ export async function restoreSession() {
   try { saved=await store('read'); } catch { return null; }
   if(!saved)return null;
   if(saved.version!==1||!saved.name||!saved.key||saved.key.extractable!==false){await forgetSession();return null;}
-  const envelope=await accessEnvelope();
-  if(saved.ciphertext!==envelope.ciphertext){await forgetSession();return null;}
-  try { return {name:saved.name,token:await decryptAccess(envelope,saved.key)}; }
-  catch {await forgetSession();return null;}
+  const envelope=saved.envelope||await accessEnvelope();
+  try {
+    const token=await decryptAccess(envelope,saved.key);
+    if(!saved.envelope)await rememberSession(saved.name,{key:saved.key,ciphertext:envelope.ciphertext,envelope});
+    return {name:saved.name,token,key:saved.key,ciphertext:envelope.ciphertext,envelope};
+  } catch {await forgetSession();return null;}
 }
+export async function verifySession(session){return (await accessEnvelope()).ciphertext===session.ciphertext;}

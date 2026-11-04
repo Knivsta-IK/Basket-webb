@@ -71,6 +71,14 @@ Word- och Excel-biblioteken laddas först när de används. Konvertering och red
 
 ## Filöppning och borttagning
 
-Filval visar direkt namn och laddningsindikator. När en annan fil väljs avbryts föregående hämtning. Binärdata och bildadresser cachas efter filens oföränderliga SHA under sessionen; vanlig uppdatering av biblioteket tömmer inte cachen. Utloggning tömmer den. Uppladdning visar egna bildförhandsvisningar och erbjuder alla befintliga mappar, inklusive Bilder.
+Filval visar direkt namn och laddningsindikator. När en annan fil väljs avbryts föregående hämtning. Binärdata cachas efter filens oföränderliga SHA i minnet och krypterat i IndexedDB på enheten. Bibliotek och senast öppnade fil återställs från den krypterade cachen vid nästa besök, medan åtkomst och uppdateringar kontrolleras i bakgrunden. Vanlig uppdatering tömmer inte cachen; utloggning gör det. Cachen hålls kring högst 80 MB och äldre poster rensas vid behov. Uppladdning visar egna bildförhandsvisningar och erbjuder alla befintliga mappar, inklusive Bilder.
 
 Filmenyn nås via ⋯, högerklick eller långtryck. Den erbjuder nedladdning och borttagning. Borttagning kräver en separat bekräftelse och sparas i historiken. Delete-tangenten tar inte bort filer. Om någon annan ändrat filen sedan den öppnades måste materialet uppdateras innan borttagningen tillåts.
+
+## Fast skärm och bildgester
+
+Arbetsrummet håller sig inom skärmens bredd och höjd. Sidhuvud och verktygsfält ligger stilla; dokumentet och filträdet har varsin rullyta. I liggande läge visas filträdet alltid till vänster, även på telefon. I stående telefonläge följer sidopanelen fingret från skärmens vänstra kant och snäpper upp vid släpp. Drag åt vänster från panelens högra kant eller skärmens högra kant stänger panelen. Drag som börjar i mitten påverkar inte menyn.
+
+Bildvyn har plus/minus och Anpassa, mushjulszoom, dubbelklickszoom, musdrag, tvåfingerszoom och enfingerspanorering när bilden är zoomad. Båda skärmkanterna är reserverade för navigering: bilder hanterar inte pekgester som börjar där. Zoom och panorering klipps inom bildvyn och påverkar inte sidans bredd.
+
+Återöppning beror på enhetens cache, avkodning och prestanda. Första hämtningen kräver fortfarande nätverk. Den cachade vägen testas med avsiktligt långsamma nätverkssvar så att filen visas utan att invänta dem.

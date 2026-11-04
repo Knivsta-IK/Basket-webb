@@ -32,7 +32,7 @@ export async function openAccessSession(envelope, password) {
   try {
     const key = await keyFor(password, unb64(envelope.salt), envelope.iterations);
     const token = await decryptAccess(envelope, key);
-    return { token, key, ciphertext: envelope.ciphertext };
+    return { token, key, ciphertext: envelope.ciphertext, envelope };
   } catch { throw new Error('Fel lösenord. Försök igen.'); }
 }
 export async function openAccess(envelope, password) { return (await openAccessSession(envelope,password)).token; }
