@@ -380,3 +380,15 @@ test('telefonens fokusläge frigör skrivytan och håller senaste verktygen på 
   await page.getByRole('button',{name:'Avsluta fokusläge',exact:true}).click();await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
   await page.getByRole('button',{name:'Spara ändringar',exact:true}).click();await expect(page.getByLabel('Vad har du ändrat?')).toBeVisible();
 });
+
+test('bocken lämnar fokusläge även om tangentbordet stängs före klick och sen fokus anländer',async({page})=>{
+  await page.setViewportSize({width:390,height:844});const editor=page.locator('.tiptap');await editor.click();await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  // Safari can close the keyboard and move the toolbar before delivering a click.
+  await page.locator('#finish-editing').dispatchEvent('pointerdown',{pointerType:'touch',pointerId:41,button:0,bubbles:true,cancelable:true});
+  await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:844});visualViewport.dispatchEvent(new Event('resize'));});
+  await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('.topbar')).toBeVisible();
+  // A queued editor focus must not re-enter the mode after the user's explicit exit.
+  await editor.focus();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
+  await editor.click();await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  await page.locator('#finish-editing').click();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(editor).not.toBeFocused();
+});

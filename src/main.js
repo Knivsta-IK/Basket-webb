@@ -30,8 +30,9 @@ let planTitle = '', planNotes = '', clipboardCache = null, recents = [], selecte
 let imageView = null;
 let stopViewportTracking = null;
 let editorTools=null;
-function setFocusMode(active){document.body.classList.toggle('editing-focus',active);editorTools?.setFocus(active);}
-function finishEditing(){editor?.commands.blur();setFocusMode(false);}
+let focusDismissed=false;
+function setFocusMode(active){if(active&&focusDismissed)return;document.body.classList.toggle('editing-focus',active);editorTools?.setFocus(active);}
+function finishEditing(){focusDismissed=true;editor?.view.dom.blur();setFocusMode(false);}
 let openController = null, opening = false, suppressFileClickUntil = 0;
 const fileImageUrls = new Map();
 const objectUrls = new Set();
@@ -87,6 +88,7 @@ function workspace() {
   $('#link').onclick = addLink; $('#image').onclick = () => $('#image-input').click();
   $('#image-input').onchange = e => { [...e.target.files].forEach(file => addAttachment(file)); e.target.value = ''; };
   editorTools?.destroy();editorTools=mountEditorTools($('#format-bar'),finishEditing);
+  $('#format-bar').addEventListener('pointerdown',event=>{if(event.target.closest('[data-tool],select'))focusDismissed=false;},{capture:true});
   renderTree(); renderPlan(); setupTreeTransfers(); setupFileMenus();
 }
 function folderLabel(path) { const leaf = path.split('/').pop(); return ({ ovningar: 'Övningar', dokument: 'Dokument', traningar: 'Träningar', bilder: 'Bilder', filmer: 'Filmer', 'Kom-igang': 'Kom igång' })[leaf] || leaf.replace(/-/g, ' '); }
@@ -192,6 +194,7 @@ async function openFile(file, force = false) {
 }
 
 function mountEditor(content) {
+  focusDismissed=false;
   sheet?.destroy(); sheet = null; $('#document-area').classList.remove('has-sheet');
   $('#format-bar').hidden = false;
   $('#document-area').innerHTML = '<article class="paper"><div id="editor"></div></article>';
@@ -206,6 +209,8 @@ function mountEditor(content) {
     const paragraphs = plain.split(/\r?\n/).map(line => view.state.schema.nodes.paragraph.create(null, line ? view.state.schema.text(line) : null));
     view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(paragraphs), 0, 0)).scrollIntoView()); return true;
   }, handleDrop: (_view, event) => { const dropped = [...(event.dataTransfer?.files || [])]; if (!dropped.length) return false; event.preventDefault(); const position = _view.posAtCoords({ left: event.clientX, top: event.clientY }); if (position) editor.commands.setTextSelection(position.pos); dropped.forEach(addAttachment); return true; } }, onFocus:()=>setFocusMode(true), onUpdate: () => { dirty = editor.getMarkdown() !== original || !active.sha; updateStatus(); }, onSelectionUpdate: updateToolbar });
+  // A delayed browser/editor focus must not undo an explicit exit. A new tap can edit again.
+  editor.view.dom.addEventListener('pointerdown',()=>{focusDismissed=false;if(editor.view.hasFocus())setFocusMode(true);},{capture:true});
   // Normalize the trailing paragraph before recording the clean baseline.
   const initialDirty=dirty;editor.view.dispatch(editor.state.tr.setMeta('addToHistory',false));
   original = editor.getMarkdown();dirty=initialDirty;updateToolbar();
