@@ -84,3 +84,8 @@ body.editing-focus{--header-height:0px}
   .editing-focus .sidebar{top:var(--workspace-top,0px)}
 }
 @media(prefers-color-scheme:dark){.tools-dropdown{background:#202024}}
+/* Keep menu scrolling inside the menu, including at the ends of its scrollable regions. */
+.workspace-open .sidebar,.workspace-open .sidebar #tree,.workspace-open .sidebar .recent-files{overscroll-behavior:none}
+@media(max-width:760px) and (orientation:portrait){
+  .workspace.library-open .document-area,.workspace.drawer-dragging .document-area{overflow:hidden;touch-action:none}
+}

@@ -18,6 +18,8 @@ export function mountEditorTools(bar){
   }
   more.onmousedown=event=>event.preventDefault();more.onclick=()=>{const open=dropdown.hidden;dropdown.hidden=!open;more.setAttribute('aria-expanded',String(open));};
   const abort=new AbortController();
+  // Keep the editor selection and keyboard stable until a tapped tool receives its click.
+  bar.addEventListener('mousedown',event=>{if(event.target.closest('[data-tool],#more-tools-button'))event.preventDefault();},{capture:true,signal:abort.signal});
   bar.addEventListener('click',event=>{const button=event.target.closest('[data-tool]');if(!button)return;const wasInDropdown=dropdown.contains(button);order=[button.dataset.tool,...order.filter(id=>id!==button.dataset.tool)];if(wasInDropdown)close();queueMicrotask(render);},{signal:abort.signal});
   type.addEventListener('change',close,{signal:abort.signal});
   document.addEventListener('pointerdown',event=>{if(!bar.contains(event.target))close();},{signal:abort.signal});

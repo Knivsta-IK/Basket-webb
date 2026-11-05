@@ -511,13 +511,14 @@ function setLibraryOpen(open) {
 function setupSwipes() {
   const workspace=$('.workspace'),panel=$('.sidebar'),backdrop=$('#library-backdrop');let drag;
   const portrait=()=>matchMedia('(max-width:760px) and (orientation:portrait)').matches;
+  const menuScroller=target=>{const candidate=target.closest?.('#tree,.recent-files');return candidate&&panel.contains(candidate)&&candidate.scrollHeight>candidate.clientHeight+1?candidate:null;};
   const ownsNavigation=(x)=>portrait()&&(workspace.classList.contains('library-open')||x<=28||x>=innerWidth-28);
   // Capture ownership before the target's image/pointer handlers can run.
   workspace.addEventListener('pointerdown',event=>{if(event.pointerType==='touch'&&ownsNavigation(event.clientX))workspace.dataset.gestureOwner='drawer';},{capture:true,passive:true});
   for(const name of ['pointerup','pointercancel'])workspace.addEventListener(name,()=>{if(!drag)delete workspace.dataset.gestureOwner;},{capture:true,passive:true});
   function finish(cancel=false){
     if(!drag){delete workspace.dataset.gestureOwner;return;}
-    const dx=drag.dx||0,target=cancel?drag.open:Math.abs(dx)>20?dx>0:drag.open;
+    const dx=drag.dx||0,target=cancel||drag.vertical?drag.open:Math.abs(dx)>20?dx>0:drag.open;
     workspace.classList.remove('drawer-dragging');panel.style.transform='';backdrop.style.opacity='';drag=null;delete workspace.dataset.gestureOwner;setLibraryOpen(target);
   }
   workspace.addEventListener('touchstart',event=>{
@@ -527,12 +528,27 @@ function setupSwipes() {
     // An open panel can be closed from anywhere, including its file buttons.
     workspace.dataset.gestureOwner='drawer';
     const bounds=panel.getBoundingClientRect();
-    drag={x:touch.clientX,y:touch.clientY,dx:0,open:isOpen,width:bounds.width,progress:Math.max(0,Math.min(1,(bounds.x+bounds.width)/bounds.width)),started:false};
+    drag={x:touch.clientX,y:touch.clientY,lastY:touch.clientY,scroller:isOpen?menuScroller(event.target):null,vertical:false,dx:0,open:isOpen,width:bounds.width,progress:Math.max(0,Math.min(1,(bounds.x+bounds.width)/bounds.width)),started:false};
   },{capture:true,passive:true});
   workspace.addEventListener('touchmove',event=>{
+    if(portrait()&&workspace.classList.contains('library-open')&&event.touches.length!==1){if(event.cancelable)event.preventDefault();event.stopPropagation();return;}
     if(!drag||event.touches.length!==1){finish(true);return;}
     const touch=event.touches[0],dx=touch.clientX-drag.x,dy=touch.clientY-drag.y;
-    if(!drag.started){if(Math.abs(dy)>8&&Math.abs(dy)>Math.abs(dx)){drag=null;delete workspace.dataset.gestureOwner;return;}if(Math.abs(dx)<6)return;drag.started=true;workspace.classList.add('drawer-dragging');workspace.dispatchEvent(new Event('drawerdragstart'));}
+    if(drag.open&&!drag.started&&!drag.vertical&&Math.abs(dx)<6&&Math.abs(dy)<=8){
+      const scroller=drag.scroller,canScroll=scroller&&(dy===0||(dy<0?scroller.scrollTop+scroller.clientHeight<scroller.scrollHeight-1:scroller.scrollTop>0));
+      if(!canScroll&&event.cancelable)event.preventDefault();event.stopPropagation();return;
+    }
+    if(!drag.started&&!drag.vertical&&Math.abs(dy)>8&&Math.abs(dy)>Math.abs(dx)){
+      if(!drag.open){drag=null;delete workspace.dataset.gestureOwner;return;}
+      drag.vertical=true;
+    }
+    if(drag.vertical){
+      const delta=drag.lastY-touch.clientY,scroller=drag.scroller;drag.lastY=touch.clientY;
+      const canScroll=scroller&&(delta>0?scroller.scrollTop+scroller.clientHeight<scroller.scrollHeight-1:scroller.scrollTop>0);
+      // Header, buttons, backdrop and scroll boundaries must never hand a drag to the page behind.
+      if(!canScroll&&event.cancelable)event.preventDefault();event.stopPropagation();return;
+    }
+    if(!drag.started){if(Math.abs(dx)<6)return;drag.started=true;workspace.classList.add('drawer-dragging');workspace.dispatchEvent(new Event('drawerdragstart'));}
     if(event.cancelable)event.preventDefault();event.stopPropagation();
     drag.dx=dx;const progress=Math.max(0,Math.min(1,drag.progress+dx/drag.width));
     panel.style.transform=`translateX(${(progress-1)*drag.width}px)`;backdrop.hidden=false;backdrop.style.opacity=String(progress);

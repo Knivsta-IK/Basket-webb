@@ -428,3 +428,42 @@ test('valfri felsökning kopierar bara skärmhändelser och versionsnummer',asyn
   const data=await page.evaluate(()=>window.copiedDiagnostic);expect(JSON.parse(data).version).toBe('keyboard-20261105-2');expect(JSON.parse(data).events.length).toBeGreaterThan(0);
   for(const privateValue of ['github_pat_fake','Anna Andersson','Välkommen','en testfras med fyra ord'])expect(data).not.toContain(privateValue);
 });
+
+async function openLongLibrary(page){
+  for(let i=0;i<70;i++)stored[`dokument/fil-${i}.md`]=`# Fil ${i}`;
+  stored['dokument/start.md']='# Material\n\n'+Array(150).fill('En lång instruktion i bakgrunden.').join('\n\n');
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(page.locator('.tiptap h1')).toHaveText('Material');
+  await page.setViewportSize({width:390,height:844});await page.locator('.document-area').evaluate(el=>el.scrollTop=400);
+  await page.getByRole('button',{name:'Filer',exact:true}).click();await expect.poll(async()=>Math.round((await page.locator('.sidebar').boundingBox()).x)).toBe(0);
+}
+test('vertikala drag stannar i filpanelen över rubrik, knappar, bakgrund och listans kanter',async({page})=>{
+  await openLongLibrary(page);const before=await page.locator('.document-area').evaluate(el=>el.scrollTop);
+  const swipe=async(selector,dy)=>page.locator(selector).evaluate((el,dy)=>{const r=el.getBoundingClientRect(),y=r.y+Math.min(30,r.height/2),touch=delta=>window.testTouch({identifier:33,target:el,clientX:r.x+Math.min(60,r.width/2),clientY:y+delta});el.dispatchEvent(window.testTouchEvent('touchstart',{touches:[touch(0)],bubbles:true}));const event=window.testTouchEvent('touchmove',{touches:[touch(dy)],bubbles:true,cancelable:true});el.dispatchEvent(event);el.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[touch(dy)],bubbles:true}));return event.defaultPrevented;},dy);
+  for(const selector of ['.library-title','.sidebar-bottom','#library-backdrop'])for(const dy of [3,70])expect(await swipe(selector,dy)).toBe(true);
+  await page.locator('#tree').evaluate(el=>el.scrollTop=0);expect(await swipe('#tree',70)).toBe(true);
+  await page.locator('#tree').evaluate(el=>el.scrollTop=el.scrollHeight);expect(await swipe('#tree',-70)).toBe(true);
+  await page.locator('#tree').evaluate(el=>el.scrollTop=100);expect(await swipe('#tree',-70)).toBe(false);
+  expect(await page.locator('.document-area').evaluate(el=>el.scrollTop)).toBe(before);await expect(page.locator('.workspace')).toHaveClass(/library-open/);
+  expect(await page.evaluate(()=>scrollY)).toBe(0);
+});
+test('riktig pekgest rullar filerna men flyttar aldrig dokumentet bakom menyn',async({page,context,browserName})=>{
+  test.skip(browserName!=='chromium','Pekgester via Chromium CDP');await openLongLibrary(page);
+  const before=await page.locator('.document-area').evaluate(el=>el.scrollTop),client=await context.newCDPSession(page);
+  async function swipe(x,y,dy){await client.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});for(let i=1;i<=8;i++)await client.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+dy*i/8,id:1}]});await client.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});}
+  const title=await page.locator('.library-title').boundingBox();await swipe(100,title.y+15,100);
+  expect(await page.locator('.document-area').evaluate(el=>el.scrollTop)).toBe(before);
+  const tree=page.locator('#tree'),box=await tree.boundingBox();await tree.evaluate(el=>el.scrollTop=100);await swipe(100,box.y+box.height/2,-90);
+  await expect.poll(()=>tree.evaluate(el=>el.scrollTop)).toBeGreaterThan(120);
+  expect(await page.locator('.document-area').evaluate(el=>el.scrollTop)).toBe(before);await expect(page.locator('.workspace')).toHaveClass(/library-open/);expect(await page.evaluate(()=>scrollX===0&&scrollY===0)).toBe(true);
+});
+
+test('textfärg öppnas med ett riktigt tryck från telefonens verktygsmeny',async({page,browserName})=>{
+  test.skip(browserName!=='webkit','WebKit pekskärm');await phoneViewport(page);const editor=page.locator('.tiptap');await editor.click();
+  await editor.locator('p').evaluate(el=>{const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));});
+  const tap=async locator=>{const b=await locator.boundingBox();await page.touchscreen.tap(b.x+b.width/2,b.y+b.height/2);};
+  await tap(page.getByRole('button',{name:'Fler verktyg',exact:true}));await expect(page.locator('#more-tools')).toBeVisible();
+  await tap(page.getByRole('button',{name:'Textfärg',exact:true}));await expect(page.getByRole('heading',{name:'Välj textfärg',exact:true})).toBeVisible();
+  await tap(page.getByRole('button',{name:'Blå',exact:true}));await expect(editor.locator('span[style]')).toHaveCSS('color','rgb(57, 123, 184)');
+  await expect(page.locator('dialog')).toHaveCount(0);await expect(page.locator('.recent-tools #text-color')).toBeVisible();
+  await tap(page.getByRole('button',{name:'Textfärg',exact:true}));await expect(page.getByRole('heading',{name:'Välj textfärg',exact:true})).toBeVisible();
+});
