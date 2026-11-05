@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { zipSync, strToU8 } from 'fflate';
 import { sealAccess } from '../src/access.js';
@@ -208,6 +209,7 @@ test('sidans bredd och fasta huvud fungerar i telefonens båda riktningar',async
 });
 test('kantdrag följer fingret, kort drag öppnar och mitten påverkar inte menyn',async({page})=>{
   await page.setViewportSize({width:390,height:844});
+  await expect.poll(async()=>{const b=await page.locator('.sidebar').boundingBox();return b.x+b.width;}).toBeLessThanOrEqual(1);
   const gesture=async(startX,endX,finish=true)=>page.locator('.workspace').evaluate((element,{startX,endX,finish})=>{const t=x=>window.testTouch({identifier:1,target:element,clientX:x,clientY:240});element.dispatchEvent(window.testTouchEvent('touchstart',{touches:[t(startX)],bubbles:true}));element.dispatchEvent(window.testTouchEvent('touchmove',{touches:[t(endX)],bubbles:true,cancelable:true}));if(finish)element.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[t(endX)],bubbles:true}));},{startX,endX,finish});
   await gesture(160,300);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);
   await gesture(8,40,false);const during=await page.locator('.sidebar').boundingBox();expect(during.x).toBeLessThan(0);expect(during.x+during.width).toBeGreaterThan(20);
@@ -251,4 +253,78 @@ test('menyn följer vänsterdrag från en filrad medan bilden förblir stilla',a
   await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const picture=page.locator('.zoom-viewport img');await page.getByRole('button',{name:'☰ Filer',exact:true}).click();await expect.poll(async()=>Math.round((await page.locator('.sidebar').boundingBox()).x)).toBe(0);
   const before=await picture.getAttribute('style'),button=page.locator('[data-path="bilder/zoom.png"]');await button.evaluate(el=>{const r=el.getBoundingClientRect(),touch=x=>window.testTouch({identifier:17,target:el,clientX:x,clientY:r.y+r.height/2});el.dispatchEvent(window.testTouchEvent('touchstart',{touches:[touch(170)],bubbles:true}));el.dispatchEvent(window.testTouchEvent('touchmove',{touches:[touch(120)],bubbles:true,cancelable:true}));});
   expect((await page.locator('.sidebar').boundingBox()).x).toBeLessThan(-20);expect(await picture.getAttribute('style')).toBe(before);await button.evaluate(el=>{const r=el.getBoundingClientRect();el.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[window.testTouch({identifier:17,target:el,clientX:120,clientY:r.y+r.height/2})],bubbles:true}));});await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);expect(await picture.getAttribute('style')).toBe(before);
+});
+
+async function saveMediaDocument(page) {
+  await page.getByRole('button',{name:'Spara ändringar',exact:true}).click();
+  await page.getByLabel('Vad har du ändrat?').fill('Lägger till skalbart material');
+  await page.locator('dialog').getByRole('button',{name:'Spara ändringar',exact:true}).click();
+  await expect(page.locator('dialog')).toHaveCount(0);
+  const blobs=writes.filter(w=>w.path==='/git/blobs');
+  const tree=writes.find(w=>w.path==='/git/trees').body.tree;
+  for(const entry of tree){const index=Number(entry.sha.replace('created-',''))-1;stored[entry.path]=Buffer.from(writes[index].body.content,'base64');}
+  return Buffer.from(blobs[0].body.content,'base64').toString();
+}
+async function resizeMedia(page,media,dx=-100) {
+  const frame=media.locator('.media-frame');await frame.click();
+  await expect(media.locator('.media-resize-handle:visible')).toHaveCount(4);
+  const handle=await media.locator('.handle-se').boundingBox();
+  await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();await page.mouse.move(handle.x+handle.width/2+dx,handle.y+handle.height/2+dx/2,{steps:8});await page.mouse.up();
+}
+test('bildens fyra hörnhandtag ändrar storlek och storleken överlever sparning och ångra',async({page})=>{
+  const buffer=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=600;c.height=400;c.getContext('2d').fillRect(0,0,600,400);return c.toDataURL().split(',')[1];});
+  await page.locator('#image-input').setInputFiles({name:'bild.png',mimeType:'image/png',buffer:Buffer.from(buffer,'base64')});
+  const media=page.locator('.tiptap .document-image');await expect(media.locator('img')).toBeVisible();
+  const before=await media.locator('.media-frame').boundingBox();await resizeMedia(page,media);
+  const after=await media.locator('.media-frame').boundingBox();expect(after.width).toBeLessThan(before.width-50);expect(after.width/after.height).toBeCloseTo(1.5,1);
+  await page.getByRole('button',{name:'Ångra',exact:true}).click();await expect.poll(async()=>Math.round((await media.locator('.media-frame').boundingBox()).width)).toBe(Math.round(before.width));
+  await page.getByRole('button',{name:'Gör om',exact:true}).click();
+  const markdown=await saveMediaDocument(page);expect(markdown).toMatch(/<img src="\.\.\/bilder\/[^" ]+" alt="bild.png" width="\d+" height="\d+">/);expect(markdown).not.toContain('blob:');
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(media.locator('img')).toBeVisible();
+  await expect.poll(async()=>Math.round((await media.locator('.media-frame').boundingBox()).width)).toBe(Math.round(after.width));
+});
+test('video spelas och spolas i dokumentet utan textändring och sparas med storlek',async({page})=>{
+  await page.locator('#image-input').setInputFiles('tests/fixtures/clip.mp4');
+  const media=page.locator('.tiptap .document-video'),video=media.locator('video');await expect(video).toBeVisible();
+  await media.locator('.media-frame').click();await expect(media.locator('.media-resize-handle:visible')).toHaveCount(4);
+  await expect(media.getByRole('button',{name:'Spela video',exact:true})).toBeEnabled();
+  await media.getByRole('button',{name:'Spela video',exact:true}).click();await expect(media.getByRole('button',{name:'Pausa video',exact:true})).toBeVisible();
+  await media.getByRole('slider').evaluate(el=>{el.value='1.5';el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));});
+  await expect.poll(()=>video.evaluate(el=>el.currentTime)).toBeCloseTo(1.5,1);await expect(media.getByRole('button',{name:'Spela video',exact:true})).toBeVisible();
+  await resizeMedia(page,media);const width=Math.round((await media.locator('.media-frame').boundingBox()).width);
+  const markdown=await saveMediaDocument(page);expect(markdown).toMatch(/<video src="\.\.\/filmer\/.+width="\d+" height="\d+"/);expect(markdown).not.toContain('blob:');
+  expect(writes.find(w=>w.path==='/git/trees').body.tree.some(e=>e.path.startsWith('filmer/'))).toBe(true);
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(video).toBeVisible();await media.locator('.media-frame').click();await expect(media.getByRole('button',{name:'Spela video',exact:true})).toBeEnabled();
+  await expect.poll(async()=>Math.round((await media.locator('.media-frame').boundingBox()).width)).toBe(width);
+  await media.getByRole('button',{name:'Spela video',exact:true}).click();await expect(media.getByRole('button',{name:'Pausa video',exact:true})).toBeVisible();await media.getByRole('button',{name:'Pausa video',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Spara ändringar',exact:true})).toBeDisabled();
+  await page.setViewportSize({width:390,height:844});await media.locator('.media-frame').click();
+  await expect(media.locator('.media-resize-handle:visible')).toHaveCount(4);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const controlBox=await media.locator('.document-video-controls').boundingBox(),frameBox=await media.locator('.media-frame').boundingBox();expect(controlBox.y).toBeGreaterThanOrEqual(frameBox.y+frameBox.height-1);
+  await page.screenshot({path:'/tmp/basket-video-mobile.png'});
+});
+
+
+test('video hämtas vid tryck, återanvänds från cache och följer nya filversioner',async({page})=>{
+  stored['filmer/klipp.mp4']=readFileSync('tests/fixtures/clip.mp4');
+  stored['dokument/video.md']='# Film\n\n<video src="../filmer/klipp.mp4" width="320" height="180" controls playsinline></video>';
+  let requests=0;await page.route('**/git/blobs/'+shaFor(stored['filmer/klipp.mp4']),async route=>{requests++;await route.fallback();});
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await page.locator('[data-path="dokument/video.md"]').click();
+  const video=page.locator('.tiptap video');await expect(video).toBeVisible();expect(requests).toBe(0);
+  await page.locator('.tiptap .media-frame').click();await expect(page.getByRole('button',{name:'Spela video',exact:true})).toBeEnabled();expect(requests).toBe(1);await expect(page.getByRole('button',{name:'Spara ändringar',exact:true})).toBeDisabled();
+  await page.locator('[data-path="dokument/start.md"]').click();await page.locator('[data-path="dokument/video.md"]').click();
+  await page.locator('.tiptap .media-frame').click();await expect(page.getByRole('button',{name:'Spela video',exact:true})).toBeEnabled();expect(requests).toBe(1);
+  const oldSource=await video.getAttribute('src'),oldVideo=await video.elementHandle();stored['filmer/klipp.mp4']=Buffer.concat([stored['filmer/klipp.mp4'],Buffer.from([0,0,0,8,102,114,101,101])]);
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect.poll(()=>oldVideo.evaluate(el=>el.isConnected)).toBe(false);await page.locator('.tiptap .media-frame').click();
+  await expect(video).not.toHaveAttribute('src',oldSource);await expect(page.getByRole('button',{name:'Spela video',exact:true})).toBeEnabled();
+});
+test('telefonens hörnhandtag följer fingret utan att flytta sidan',async({page,context,browserName})=>{
+  test.skip(browserName!=='chromium','Inbyggd pekskärm via Chromium');await page.setViewportSize({width:390,height:844});
+  await page.locator('#image-input').setInputFiles('tests/fixtures/clip.mp4');const media=page.locator('.tiptap .document-video');await media.locator('.media-frame').click();
+  const before=await media.locator('.media-frame').boundingBox(),handle=await media.locator('.handle-se').boundingBox(),x=handle.x+15,y=handle.y+15;
+  const client=await context.newCDPSession(page);await client.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});
+  await client.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+60,y:y+30,id:1}]});await client.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await expect.poll(async()=>(await media.locator('.media-frame').boundingBox()).width).toBeGreaterThan(before.width+40);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&scrollX===0)).toBe(true);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);
 });

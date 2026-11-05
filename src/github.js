@@ -2,6 +2,7 @@ import { mergeDiff3 } from 'node-diff3';
 export const REPO = 'Knivsta-IK/Basket';
 const ROOT = `https://api.github.com/repos/${REPO}`;
 export const MAX_SIZE = 5 * 1024 * 1024;
+export const fileLimit = path => /\.(mp4|m4v|mov|webm)$/i.test(path || '') ? 25 * 1024 * 1024 : MAX_SIZE;
 export const utf8 = new TextEncoder();
 export const text = bytes => new TextDecoder().decode(bytes);
 export function encode(bytes) {
@@ -46,14 +47,14 @@ export class GitHub {
   }
 
   async read(file, options = {}) {
-    if (file.size > MAX_SIZE) throw new Error('Filen är större än 5 MB och kan inte öppnas här.');
+    if (file.size > fileLimit(file.path)) throw new Error('Filen är för stor för att öppnas här. Videoklipp får vara högst 25 MB och övriga filer 5 MB.');
     const blob = await this.request(`/git/blobs/${file.sha}`, options);
     return decode(blob.content);
   }
   async save(changes, message, resolveConflict) {
     if (!message.trim()) throw new Error('Beskriv vad du har ändrat.');
     if (!changes.length || changes.some(c => !validPath(c.path))) throw new Error('Ge filen ett giltigt namn.');
-    if (changes.some(c => !c.delete && c.bytes.length > MAX_SIZE)) throw new Error('Varje fil får vara högst 5 MB.');
+    if (changes.some(c => !c.delete && c.bytes.length > fileLimit(c.path))) throw new Error('Videoklipp får vara högst 25 MB och övriga filer 5 MB.');
     changes = changes.map(c => ({ ...c }));
     for (let attempt = 0; attempt < 3; attempt++) {
       const latest = await this.snapshot();

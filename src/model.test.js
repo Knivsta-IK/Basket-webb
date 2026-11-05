@@ -56,3 +56,10 @@ test('borttagning skapar bara en träduppdatering med null-SHA', async () => {
 test('en fil som ändrats av någon annan tas inte bort', async () => {
   const api=new GitHub('fake');api.branch='main';api.snapshot=async()=>({head:'h',tree:'t',files:[{path:'dokument/a.md',sha:'newer'}]});api.request=async()=>assert.fail('Ingen skrivning');await assert.rejects(api.save([{path:'dokument/a.md',baseSha:'old',delete:true}],'Tar bort',()=>assert.fail()),/Filen har ändrats/);
 });
+
+test('skalade bilder och videor pekar rätt när de används i en träning',()=>{
+  const entry={title:'Övning',path:'ovningar/grupp/a.md',content:'# Övning\n\n<img src="../../bilder/a.png" width="240" height="160">\n\n<video src="../../filmer/a.mp4" width="320" height="180" controls playsinline></video>',minutes:10};
+  const output=trainingMarkdown('Pass','',Array(4).fill(entry));
+  assert.match(output,/<img src="\.\.\/bilder\/a.png" width="240" height="160">/);
+  assert.match(output,/<video src="\.\.\/filmer\/a.mp4" width="320" height="180" controls playsinline>/);
+});

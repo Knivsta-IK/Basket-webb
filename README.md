@@ -41,7 +41,7 @@ bilagor/      Filer som släppts eller klistrats in i texten
 dokument/     Övrigt föreningsmaterial
 ```
 
-Bilder sparas med relativa länkar. Externa bilder laddas inte automatiskt, för att undvika att dela besöksinformation med okända bildservrar. Välj PNG, JPG, WebP eller GIF. Filer får vara högst 5 MB; högst 200 filer och 50 MB totalt per uppladdning. Filer och mappar kan släppas i filträdet. Filer som operativsystemet exponerar via urklipp kan klistras in där med Ctrl+V. En mappväljare finns som alternativ till att dra mappar. Tomma mappar och dolda filer stöds inte.
+Bilder sparas med relativa länkar. Externa bilder laddas inte automatiskt, för att undvika att dela besöksinformation med okända bildservrar. Välj PNG, JPG, WebP eller GIF. Videoklipp får vara högst 25 MB och övriga filer 5 MB; högst 200 filer och 50 MB totalt per uppladdning. Filer och mappar kan släppas i filträdet. Filer som operativsystemet exponerar via urklipp kan klistras in där med Ctrl+V. En mappväljare finns som alternativ till att dra mappar. Tomma mappar och dolda filer stöds inte.
 
 Arbetsutkast och osparade träningspass finns bara i minnet. Spara innan sidan stängs. Sidans inbyggda påminnelse varnar när det finns osparat arbete. Flera personer kan arbeta samtidigt; det finns ingen realtidssynkronisering.
 
@@ -82,3 +82,11 @@ Arbetsrummet håller sig inom skärmens bredd och höjd. Sidhuvud och verktygsf�
 Bildvyn har plus/minus och Anpassa, mushjulszoom, dubbelklickszoom, musdrag, tvåfingerszoom och enfingerspanorering när bilden är zoomad. Båda skärmkanterna är reserverade för navigering: bilder hanterar inte pekgester som börjar där. Zoom och panorering klipps inom bildvyn och påverkar inte sidans bredd.
 
 Återöppning beror på enhetens cache, avkodning och prestanda. Första hämtningen kräver fortfarande nätverk. Den cachade vägen testas med avsiktligt långsamma nätverkssvar så att filen visas utan att invänta dem.
+
+## Bilder och video i dokument
+
+Knappen **Infoga bild eller video**, inklistring och filsläpp bäddar in materialet på skrivytan. Tryck på bilden eller klippet för att visa fyra hörnhandtag. Dra ett hörn för att ändra storlek med bibehållna proportioner. Storleken sparas med dokumentet och kan ångras/göras om. Medier hålls inom dokumentets bredd på telefon.
+
+Videor får Spela/Pausa och ett sökreglage under klippet när de markeras. Reglaget pausar uppspelningen så att den valda positionen kan granskas. Uppspelning och spolning ändrar inte dokumentet. MP4, MOV och WebM accepteras; uppspelningen beror på webbläsarens stöd för klippets kodek. MP4 med H.264 fungerar brett. Klipp får vara högst 25 MB och hämtas vid val, med samma krypterade cache som andra filer.
+
+Storleksatta bilder och videor lagras som HTML-inslag i Markdown med relativa filreferenser, aldrig tillfälliga blob-adresser. Nya mediefiler och dokumentet sparas tillsammans.

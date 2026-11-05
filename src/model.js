@@ -6,11 +6,12 @@ export function trainingMarkdown(name, notes, exercises) {
 }
 
 export function rebaseLinks(content, from) {
-  return content.replace(/(!?\[[^\]]*\]\()([^\s)]+)([^)]*\))/g, (match, start, href, end) => {
+  let rebased = content.replace(/(!?\[[^\]]*\]\()([^\s)]+)([^)]*\))/g, (match, start, href, end) => {
     if (/^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#')) return match;
     try {
       const url = new URL(href, `https://material.local/${from}`);
       return `${start}../${url.pathname.slice(1)}${url.search}${url.hash}${end}`;
     } catch { return match; }
   });
+  return rebased.replace(/(\bsrc\s*=\s*["'])([^"']+)(["'])/gi,(match,start,href,end)=>{if(/^[a-z][a-z\d+.-]*:/i.test(href)||href.startsWith('//'))return match;try{const url=new URL(href,`https://material.local/${from}`);return `${start}../${url.pathname.slice(1)}${url.search}${url.hash}${end}`;}catch{return match;}});
 }
