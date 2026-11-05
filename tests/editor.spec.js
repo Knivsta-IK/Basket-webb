@@ -404,3 +404,27 @@ test('datorn behåller normal vy vid redigering och sidan har ingen egen bock',a
   for(const width of [800,1440]){await page.setViewportSize({width,height:900});await page.locator('.tiptap').click();await page.keyboard.type('Mer material');await expect(page.locator('body')).not.toHaveClass(/editing-focus/);}
   await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('#finish-editing')).toHaveCount(0);
 });
+
+test('iPhones bock återställer normal vy när Safari bara återfår en del av höjden utan resize',async({page})=>{
+  await phoneViewport(page);const editor=page.locator('.tiptap');await editor.click();
+  await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:300});visualViewport.dispatchEvent(new Event('resize'));});
+  await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  // Browser chrome stays expanded: the keyboard closes, but the height does not return to 844.
+  await page.evaluate(()=>Object.defineProperty(visualViewport,'height',{configurable:true,value:650}));
+  await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('#doc-bar')).toBeVisible();
+});
+test('iPhones bock upptäcks även när sidan är zoomad',async({page})=>{
+  await phoneViewport(page);await page.locator('.tiptap').click();
+  await page.evaluate(()=>{Object.defineProperties(visualViewport,{scale:{configurable:true,value:1.2},width:{configurable:true,value:325},height:{configurable:true,value:250}});visualViewport.dispatchEvent(new Event('resize'));});
+  await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:550});visualViewport.dispatchEvent(new Event('resize'));});
+  await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
+});
+
+test('valfri felsökning kopierar bara skärmhändelser och versionsnummer',async({page})=>{
+  await page.goto('/?keyboard-debug=1');await expect(page.locator('.tiptap')).toBeVisible();
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{async writeText(value){window.copiedDiagnostic=value;}}}));
+  await page.getByRole('button',{name:'Kopiera felsökning',exact:true}).click();
+  const data=await page.evaluate(()=>window.copiedDiagnostic);expect(JSON.parse(data).version).toBe('keyboard-20261105-2');expect(JSON.parse(data).events.length).toBeGreaterThan(0);
+  for(const privateValue of ['github_pat_fake','Anna Andersson','Välkommen','en testfras med fyra ord'])expect(data).not.toContain(privateValue);
+});
