@@ -1,3 +1,5 @@
+import { cleanSvg } from './svg.js';
+import { mountAudio } from './audio-view.js';
 import { mountEditorTools } from './editor-tools.js';
 import { icon } from './icons.js';
 import { trackWorkspaceViewport } from './workspace-viewport.js';
@@ -38,7 +40,7 @@ function finishEditing(){focusDismissed=true;editor?.view.dom.blur();setFocusMod
 let openController = null, opening = false, suppressFileClickUntil = 0;
 const fileImageUrls = new Map();
 const objectUrls = new Set();
-function blobUrl(bytes, type) { const url = URL.createObjectURL(new Blob([bytes], { type })); objectUrls.add(url); return url; }
+function blobUrl(bytes, type) { const url = URL.createObjectURL(new Blob([type==='image/svg+xml'?cleanSvg(bytes):bytes], { type })); objectUrls.add(url); return url; }
 function clearPrivate() { setFocusMode(false);editorTools?.destroy();editorTools=null; stopViewportTracking?.();stopViewportTracking=null; imageView?.destroy(); imageView=null; document.body.classList.remove('workspace-open'); openController?.abort(); openController = null; opening = false; fileImageUrls.clear(); displayName = ''; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; api = null; files = []; active = null; cache.clear(); plan = []; pendingImages.clear(); imageUrls.clear(); objectUrls.forEach(URL.revokeObjectURL); objectUrls.clear(); dirty = false; original = ''; planTitle = ''; planNotes = ''; query = ''; filter = 'all'; clipboardCache = null; recents = []; selectedFolder = ''; planDirty = false; openVersion++; }
 function notice(message, error = false) { const node = $('#notice'); node.textContent = message; node.className = `notice ${error ? 'error' : ''}`; node.hidden = false; clearTimeout(notice.timer); notice.timer = setTimeout(() => { node.hidden = true; }, error ? 12000 : 5500); }
 function dialog(title, content, setup) {
@@ -73,7 +75,7 @@ function login() {
 function workspace() {
   stopViewportTracking?.();stopViewportTracking=trackWorkspaceViewport(()=>{if(document.body.classList.contains('editing-focus')&&!document.querySelector('dialog[open]')&&!document.activeElement?.closest('#format-bar'))finishEditing();});
   document.body.classList.add('workspace-open');
-  $('#app').innerHTML = `<header class="topbar"><a class="brand" href="#" aria-label="Knivsta IK Basket"><span class="brand-mark">${icon('ball')}</span><span>KNIVSTA IK <b>MATERIAL</b></span></a><div class="top-actions"><span class="user-name">${esc(displayName)}</span><button id="plan-toggle" class="secondary">Träningspass <span id="plan-count">0/6</span></button><button id="logout" class="plain">Logga ut</button></div></header><div class="workspace"><button id="mobile-files" class="secondary mobile-files">${icon('menu')}<span>Filer</span></button><button id="library-backdrop" class="library-backdrop" aria-label="Stäng filer" hidden></button><aside class="sidebar" id="library-panel" aria-label="Materialbibliotek"><div class="sidebar-heading"><span class="eyebrow">VÅRT BIBLIOTEK</span><button class="icon-button" id="refresh" title="Hämta senaste materialet" aria-label="Hämta senaste materialet">${icon('refresh')}</button></div><div class="library-title"><h2>Material</h2><button id="toggle-library" class="secondary">Visa filer</button></div><label class="search">${icon('search')}<input id="search" type="search" placeholder="Sök bland filer…" aria-label="Sök bland filer"></label><div class="filters"><button class="active" data-filter="all">Allt</button><button data-filter="exercises">Övningar</button><button data-filter="trainings">Träningar</button></div><nav id="tree" aria-label="Mappar och filer" tabindex="0"></nav><div class="recent-files"><span class="eyebrow">SENAST ÖPPNADE</span><div id="recents"></div></div><div class="sidebar-bottom"><button id="new-file" class="primary">${icon('plus')} Nytt dokument</button><button id="upload" class="secondary">${icon('upload')} Ladda upp filer</button><p>Gemensamt material.<br>Plats för fler idéer.</p></div></aside><main class="main"><div id="doc-bar" class="doc-bar"><span>Välj ett dokument i biblioteket</span></div><div id="format-bar" class="format-bar" hidden><select id="text-style" aria-label="Texttyp"><option value="0">Brödtext</option><option value="1">Rubrik 1</option><option value="2">Rubrik 2</option><option value="3">Rubrik 3</option><option value="4">Rubrik 4</option><option value="5">Rubrik 5</option><option value="6">Rubrik 6</option></select><span class="divider"></span><button data-format="bold" aria-label="Fetstil" title="Fetstil (Ctrl+B)">${icon('bold')}</button><button data-format="italic" aria-label="Kursiv" title="Kursiv (Ctrl+I)">${icon('italic')}</button><button id="text-color" aria-label="Textfärg" title="Textfärg">${icon('color')}</button><button data-format="underline" aria-label="Understruken" title="Understruken (Ctrl+U)">${icon('underline')}</button><span class="divider"></span><button id="link" aria-label="Infoga länk" title="Infoga länk">${icon('link')}</button><button id="image" aria-label="Infoga bild eller video" title="Infoga bild eller video">${icon('media')}</button><span class="divider"></span><button data-format="undo" aria-label="Ångra" title="Ångra">${icon('undo')}</button><button data-format="redo" aria-label="Gör om" title="Gör om">${icon('redo')}</button></div><div id="document-area" class="document-area"><div class="empty"><span class="empty-ball">${icon('ball')}</span><h1>Samlat för föreningen.</h1><p>Öppna ett dokument till vänster<br>eller skapa något nytt.</p></div></div><footer class="document-footer"><span id="save-state">Föreningens gemensamma material</span><span id="word-count"></span></footer></main><aside id="planner" class="planner" hidden></aside></div><div id="notice" class="notice" role="status" hidden></div><input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.mov,.webm" hidden>`;
+  $('#app').innerHTML = `<header class="topbar"><a class="brand" href="#" aria-label="Knivsta IK Basket"><span class="brand-mark">${icon('ball')}</span><span>KNIVSTA IK <b>MATERIAL</b></span></a><div class="top-actions"><span class="user-name">${esc(displayName)}</span><button id="plan-toggle" class="secondary">Träningspass <span id="plan-count">0/6</span></button><button id="logout" class="plain">Logga ut</button></div></header><div class="workspace"><button id="mobile-files" class="secondary mobile-files">${icon('menu')}<span>Filer</span></button><button id="library-backdrop" class="library-backdrop" aria-label="Stäng filer" hidden></button><aside class="sidebar" id="library-panel" aria-label="Materialbibliotek"><div class="sidebar-heading"><span class="eyebrow">VÅRT BIBLIOTEK</span><button class="icon-button" id="refresh" title="Hämta senaste materialet" aria-label="Hämta senaste materialet">${icon('refresh')}</button></div><div class="library-title"><h2>Material</h2><button id="toggle-library" class="secondary">Visa filer</button></div><label class="search">${icon('search')}<input id="search" type="search" placeholder="Sök bland filer…" aria-label="Sök bland filer"></label><div class="filters"><button class="active" data-filter="all">Allt</button><button data-filter="exercises">Övningar</button><button data-filter="trainings">Träningar</button></div><nav id="tree" aria-label="Mappar och filer" tabindex="0"></nav><div class="recent-files"><span class="eyebrow">SENAST ÖPPNADE</span><div id="recents"></div></div><div class="sidebar-bottom"><button id="new-file" class="primary">${icon('plus')} Nytt dokument</button><button id="upload" class="secondary">${icon('upload')} Ladda upp filer</button><p>Gemensamt material.<br>Plats för fler idéer.</p></div></aside><main class="main"><div id="doc-bar" class="doc-bar"><span>Välj ett dokument i biblioteket</span></div><div id="format-bar" class="format-bar" hidden><select id="text-style" aria-label="Texttyp"><option value="0">Brödtext</option><option value="1">Rubrik 1</option><option value="2">Rubrik 2</option><option value="3">Rubrik 3</option><option value="4">Rubrik 4</option><option value="5">Rubrik 5</option><option value="6">Rubrik 6</option></select><span class="divider"></span><button data-format="bold" aria-label="Fetstil" title="Fetstil (Ctrl+B)">${icon('bold')}</button><button data-format="italic" aria-label="Kursiv" title="Kursiv (Ctrl+I)">${icon('italic')}</button><button id="text-color" aria-label="Textfärg" title="Textfärg">${icon('color')}</button><button data-format="underline" aria-label="Understruken" title="Understruken (Ctrl+U)">${icon('underline')}</button><span class="divider"></span><button id="link" aria-label="Infoga länk" title="Infoga länk">${icon('link')}</button><button id="image" aria-label="Infoga bild eller video" title="Infoga bild eller video">${icon('media')}</button><span class="divider"></span><button data-format="undo" aria-label="Ångra" title="Ångra">${icon('undo')}</button><button data-format="redo" aria-label="Gör om" title="Gör om">${icon('redo')}</button></div><div id="document-area" class="document-area"><div class="empty"><span class="empty-ball">${icon('ball')}</span><h1>Samlat för föreningen.</h1><p>Öppna ett dokument till vänster<br>eller skapa något nytt.</p></div></div><footer class="document-footer"><span id="save-state">Föreningens gemensamma material</span><span id="word-count"></span></footer></main><aside id="planner" class="planner" hidden></aside></div><div id="notice" class="notice" role="status" hidden></div><input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.mov,.webm" hidden>`;
   $('#logout').onclick = async () => { if (busy || !confirmLeave() || (planDirty && !confirm('Du har en osparad träning. Vill du lämna den?'))) return; try { await forgetSession(); await clearContentCache(); } catch { notice('Den sparade inloggningen kunde inte rensas. Försök igen.', true); return; } clearPrivate(); login(); };
   $('.brand').onclick = e => e.preventDefault();
   $('#search').oninput = e => { query = e.target.value; renderTree(); };
@@ -142,9 +144,10 @@ async function prepareImages(content, documentPath, signal) {
     catch (error) { if (error.name === 'AbortError') throw error; }
   }));
 }
-function imageMime(path) { const ext = path.split('.').pop().toLowerCase(); return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' })[ext]; }
+function imageMime(path) { const ext = path.split('.').pop().toLowerCase(); return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg:'image/svg+xml' })[ext]; }
 function videoMime(path) { const ext=String(path||'').split('.').pop().toLowerCase();return({mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm'})[ext]; }
-function mediaMime(path){return imageMime(path)||videoMime(path);}
+function audioMime(path){const ext=String(path||'').split('.').pop().toLowerCase();return({mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg',oga:'audio/ogg',m4a:'audio/mp4',aac:'audio/aac',flac:'audio/flac',opus:'audio/ogg',weba:'audio/webm'})[ext];}
+function mediaMime(path){return imageMime(path)||videoMime(path)||audioMime(path);}
 function documentMedia(documentPath){return createMediaExtensions({getSource:src=>{const path=resolvePath(documentPath,src),file=files.find(file=>file.path===path);return(pendingImages.has(path)?imageUrls.get(path):fileImageUrls.get(file?.sha))||'';},loadSource:async(src,signal)=>{const path=resolvePath(documentPath,src),file=files.find(file=>file.path===path);if(!file||!mediaMime(path))throw new Error('Filen finns inte i materialet.');const bytes=await bytesOf(file,signal);const url=cachedImage(file,bytes);imageUrls.set(path,url);return url;}});}
 function loadingView(name) { return `<div class="file-loading" role="status"><span class="loading-spinner" aria-hidden="true"></span><span>Öppnar ${esc(name)}…</span></div>`; }
 async function openFile(file, force = false) {
@@ -180,6 +183,10 @@ async function openFile(file, force = false) {
       await picture.decode(); signal.throwIfAborted(); if (version !== openVersion) return;
       $('#document-area').innerHTML = '<div class="image-view"></div>'; imageView=mountImageView($('#document-area .image-view'),picture);
       renderTree();
+    } else if(/\.pdf$/i.test(file.path)){
+      $('#document-area').innerHTML='<div class="pdf-view"></div>';const {mountPdf}=await import('./pdf-view.js');signal.throwIfAborted();const view=await mountPdf($('#document-area .pdf-view'),bytes,signal);if(version!==openVersion){view.destroy();return;}imageView=view;
+    } else if(audioMime(file.path)){
+      $('#document-area').innerHTML='<div class="audio-view"></div>';imageView=mountAudio($('#document-area .audio-view'),cachedImage(file,bytes),file.path.split('/').pop());
     } else if(videoMime(file.path)){
       $('#document-area').innerHTML='<div class="standalone-video"></div>';imageView=mountStandaloneVideo($('#document-area .standalone-video'),cachedImage(file,bytes),file.path.split('/').pop());
     } else {
@@ -240,14 +247,15 @@ function renderDocBar() {
 async function addImage(file) {
   if (!editor || busy) return;
   if (file.size > MAX_SIZE) return notice('Bilden får vara högst 5 MB.', true);
-  const mime = imageMime(file.name) || (/^image\/(png|jpeg|webp|gif)$/.test(file.type) ? file.type : null);
-  if (!mime) return notice('Välj en bild i PNG-, JPG-, WebP- eller GIF-format.', true);
+  const mime = imageMime(file.name) || (/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(file.type) ? file.type : null);
+  if (!mime) return notice('Välj en bild i PNG-, JPG-, WebP-, GIF- eller SVG-format.', true);
   const target = editor, documentPath = active.path;
-  const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' }[mime];
+  const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml':'svg' }[mime];
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (target !== editor || target.isDestroyed) return;
   const path = `bilder/${crypto.randomUUID()}.${extension}`;
-  pendingImages.set(path, bytes); imageUrls.set(path, blobUrl(bytes, mime));
+  let url;try{url=blobUrl(bytes,mime);}catch(error){return notice(error.message,true);}
+  pendingImages.set(path, bytes); imageUrls.set(path, url);
   editor.chain().focus().setImage({ src: relativePath(documentPath, path), alt: file.name || 'Bild' }).run();
 }
 async function addVideo(file){
@@ -285,7 +293,8 @@ function resetDocument() { setFocusMode(false); imageView?.destroy();imageView=n
 async function saveDocument() {
   if (sheet) { const target = active.path; const changes = [{ path: target, bytes: await sheet.getBytes(), baseSha: active.sha }]; commitDialog(changes, async () => { dirty = false; await reload(target); }); return; }
   const content = editor.getMarkdown(); const changes = [{ path: active.path, bytes: utf8.encode(content), baseSha: active.sha }];
-  for (const [path, bytes] of pendingImages) if (content.includes(relativePath(active.path, path))) changes.push({ path, bytes, baseSha: null });
+  const documents=[{path:active.path,content}],included=new Set();
+  while(documents.length){const source=documents.pop();for(const [path,bytes]of pendingImages)if(!included.has(path)&&source.content.includes(relativePath(source.path,path))){included.add(path);changes.push({path,bytes,baseSha:null});if(isMarkdown(path))documents.push({path,content:text(bytes)});}}
   commitDialog(changes, async () => { const path = active.path; dirty = false; pendingImages.clear(); await reload(path); });
 }
 async function reload(path) { const client = api; const result = await client.load(); if (client !== api) return; files = result; renderTree(); if (path) { const file = files.find(f => f.path === path); if (file) await openFile(file, true); } }
@@ -324,7 +333,7 @@ function resolveConflict(conflict) {
 function uploadFiles() {
   if (busy) return;
   const folders = [...new Set(['', 'bilder', 'filmer', 'ovningar', 'dokument', 'traningar', ...(api.current?.directories || []), ...files.map(file => file.path.split('/').slice(0,-1).join('/'))])].sort((a,b)=>a.localeCompare(b,'sv'));
-  dialog('Lägg till material', `<form><label>Placering<select name="folder">${folders.map(path => `<option value="${esc(path)}" ${path === (selectedFolder || 'ovningar') ? 'selected' : ''}>${esc(path ? path.split('/').map(folderLabel).join(' / ') : 'Basket')}</option>`).join('')}</select></label><label class="file-pick custom-picker">Välj filer<input type="file" name="files" multiple></label><label class="file-pick custom-picker">Eller välj en hel mapp<input type="file" name="folders" webkitdirectory multiple></label><div id="upload-previews" class="upload-previews" aria-live="polite"></div><p class="muted">Word-filer (.docx) får också en redigerbar dokumentkopia. Mappstrukturen följer med. Högst 200 filer och 50 MB totalt. Videoklipp högst 25 MB, övriga filer 5 MB.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button class="primary">Fortsätt</button></div></form>`, node => {
+  dialog('Lägg till material', `<form><label>Placering<select name="folder">${folders.map(path => `<option value="${esc(path)}" ${path === (selectedFolder || 'ovningar') ? 'selected' : ''}>${esc(path ? path.split('/').map(folderLabel).join(' / ') : 'Basket')}</option>`).join('')}</select></label><label class="file-pick custom-picker">Välj filer<input type="file" name="files" multiple></label><label class="file-pick custom-picker">Eller välj en hel mapp<input type="file" name="folders" webkitdirectory multiple></label><div id="upload-previews" class="upload-previews" aria-live="polite"></div><p class="muted">Word-filer (.doc och .docx) görs om till Markdown som du granskar före sparning. Mappstrukturen följer med. </p><p class="upload-limits"><strong>Filgränser</strong><br>Video: högst 25 MB per fil.<br>Bilder, ljud, PDF och dokument: högst 5 MB per fil.<br>Högst 200 filer och 50 MB totalt per uppladdning.</p><p class="form-error" role="alert"></p><div class="dialog-actions"><button class="primary">Fortsätt</button></div></form>`, node => {
     const previews = [];
     node.querySelectorAll('input[type=file]').forEach(input => input.addEventListener('change', () => {
       previews.forEach(URL.revokeObjectURL); previews.length = 0;
@@ -393,7 +402,17 @@ function cacheCopy(view, event) {
   event.preventDefault(); return true;
 }
 async function addAttachment(file) {
-  if (imageMime(file.name) || /^image\/(png|jpeg|webp|gif)$/.test(file.type)) return addImage(file);
+  if(/\.docx?$/i.test(file.name)){
+    if(!editor||busy)return;if(file.size>MAX_SIZE)return notice('Word-filen får vara högst 5 MB.',true);
+    const target=editor,documentPath=active.path;
+    try{const {convertWord}=await import('./word.js'),name=file.name.replace(/\.docx?$/i,''),sourcePath=`dokument/${crypto.randomUUID()}-${slug(name)}.${file.name.split('.').pop()}`,converted=await convertWord(new Uint8Array(await file.arrayBuffer()),sourcePath);
+      if(!await reviewWordImports([converted])||target!==editor||target.isDestroyed)return;
+      pendingImages.set(converted.path,converted.bytes);for(const image of converted.images){pendingImages.set(image.path,image.bytes);imageUrls.set(image.path,blobUrl(image.bytes,imageMime(image.path)));}
+      editor.chain().focus().insertContent({type:'text',text:`${name}.md`,marks:[{type:'link',attrs:{href:relativePath(documentPath,converted.path),target:null}}]}).run();notice('Word-filen läggs till som Markdown när du sparar.');
+    }catch(error){notice(error.message||'Word-filen kunde inte importeras.',true);}
+    return;
+  }
+  if (imageMime(file.name) || /^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(file.type)) return addImage(file);
   if(videoMime(file.name)||/^video\/(mp4|webm|quicktime)$/.test(file.type))return addVideo(file);
   if (!editor || busy) return;
   if (file.size > MAX_SIZE) return notice('Filen får vara högst 5 MB.', true);
@@ -410,7 +429,7 @@ async function openLink(href) {
   if (/^https?:\/\//i.test(href)) { window.open(href, '_blank', 'noopener,noreferrer'); return; }
   const path = resolvePath(active.path, href), file = files.find(f => f.path === path);
   if (!file) { notice('Spara dokumentet för att kunna öppna den nya bilagan.'); return; }
-  if (isMarkdown(path)) return openFile(file);
+  if (isMarkdown(path)||isSheet(path)||imageMime(path)||videoMime(path)||audioMime(path)||/\.pdf$/i.test(path)) return openFile(file);
   try { download(await bytesOf(file), path.split('/').pop()); } catch (error) { notice(error.message, true); }
 }
 
@@ -458,10 +477,11 @@ async function stageUploads(uploads, folder = '') {
   if (uploads.length > 200 || uploads.some(({ file }) => file.size > fileLimit(file.name)) || uploads.reduce((sum, { file }) => sum + file.size, 0) > 50 * 1024 * 1024) throw new Error('Välj högst 200 filer och 50 MB totalt. Videoklipp får vara högst 25 MB och övriga filer 5 MB.');
   const paths = uploads.map(({ path }) => `${folder ? `${folder}/` : ''}${path}`);
   if (paths.some(path => !validPath(path)) || new Set(paths).size !== paths.length) throw new Error('Någon fil har ett ogiltigt eller dubblerat namn. Dolda filer stöds inte.');
-  const replaced = paths.filter(path => files.some(file => file.path === path));
+  const replaced = paths.filter(path => !/\.docx?$/i.test(path)&&files.some(file => file.path === path));
   if (replaced.length && !confirm(`Dessa filer finns redan och ersätts när du sparar:\n${replaced.slice(0, 10).join('\n')}${replaced.length > 10 ? '\n…' : ''}\n\nVill du fortsätta?`)) return;
   let changes = await Promise.all(uploads.map(async ({ file }, i) => ({ path: paths[i], bytes: new Uint8Array(await file.arrayBuffer()), baseSha: files.find(existing => existing.path === paths[i])?.sha || null })));
-  const words = changes.filter(change => /\.docx$/i.test(change.path));
+  const words = changes.filter(change => /\.docx?$/i.test(change.path));
+  const wordImports=[];
   if (words.length) {
     notice('Gör Word-filerna till redigerbara dokument…');
     const { convertWord } = await import('./word.js');
@@ -470,12 +490,25 @@ async function stageUploads(uploads, folder = '') {
       if (changes.some(change => change.path === converted.path)) throw new Error('Uppladdningen innehåller redan ett dokument med samma namn som Word-kopian. Välj ett annat namn.');
       const existing = files.find(file => file.path === converted.path);
       if (existing && !confirm(`Dokumentet ${converted.path} finns redan. Vill du ersätta det med Word-kopian?`)) return;
-      changes.push({ path: converted.path, bytes: converted.bytes, baseSha: existing?.sha || null }, ...converted.images);
-      if (converted.warnings.length) notice('Word-filen är konverterad. Vissa Word-detaljer kan ha förenklats. Originalfilen sparas också.');
+      changes=changes.filter(change=>change!==word);
+      changes.push({ path: converted.path, bytes: converted.bytes, baseSha: existing?.sha || null }, ...converted.images);wordImports.push(converted);
     }
   }
+  if(changes.length>200||changes.reduce((total,change)=>total+change.bytes.length,0)>50*1024*1024||changes.some(change=>change.bytes.length>fileLimit(change.path)))throw new Error('De konverterade filerna överskrider gränsen: högst 200 filer, 50 MB totalt och 5 MB per dokument eller bild.');
+  if (wordImports.length&&!await reviewWordImports(wordImports))return;
   if (client !== api) return;
-  commitDialog(changes, async () => { await reload(); });
+  commitDialog(changes, async () => { await reload(wordImports[0]?.path); });
+}
+function reviewWordImports(imports){
+  return new Promise(resolve=>{
+    const urls=new Map(),views=[];let accepted=false;
+    for(const imported of imports)for(const image of imported.images)urls.set(image.path,blobUrl(image.bytes,imageMime(image.path)));
+    const node=dialog('Granska Word-importen',`<p>Dokumentet sparas som Markdown. Word-filen sparas inte. Kontrollera innehållet innan du fortsätter.</p>${imports.map((item,index)=>`<section><h3>${esc(item.path.split('/').pop())}</h3><ul class="import-warnings">${item.warnings.map(message=>`<li>${esc(message)}</li>`).join('')}</ul><div class="word-import-preview" data-word-preview="${index}"></div></section>`).join('')}<div class="dialog-actions"><button class="secondary" id="cancel-word-import">Avbryt</button><button class="primary" id="accept-word-import">Fortsätt</button></div>`,node=>{
+      for(const [index,item]of imports.entries())views.push(new Editor({element:node.querySelector(`[data-word-preview="${index}"]`),editable:false,extensions:[StarterKit,...createMediaExtensions({getSource:src=>urls.get(resolvePath(item.path,src))||''}),...richExtensions(),Markdown],content:text(item.bytes),contentType:'markdown'}));
+      node.querySelector('#cancel-word-import').onclick=()=>node.close();node.querySelector('#accept-word-import').onclick=()=>{accepted=true;node.close();};
+    });
+    node.addEventListener('close',()=>{views.forEach(view=>view.destroy());for(const url of urls.values()){URL.revokeObjectURL(url);objectUrls.delete(url);}resolve(accepted);},{once:true});
+  });
 }
 async function downloadFolder(folder) {
   const client = api;

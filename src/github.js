@@ -55,6 +55,7 @@ export class GitHub {
     if (!message.trim()) throw new Error('Beskriv vad du har ändrat.');
     if (!changes.length || changes.some(c => !validPath(c.path))) throw new Error('Ge filen ett giltigt namn.');
     if (changes.some(c => !c.delete && c.bytes.length > fileLimit(c.path))) throw new Error('Videoklipp får vara högst 25 MB och övriga filer 5 MB.');
+    if(changes.length>200||changes.reduce((total,c)=>total+(c.delete?0:c.bytes.length),0)>50*1024*1024)throw new Error('Spara högst 200 filer och 50 MB totalt åt gången.');
     changes = changes.map(c => ({ ...c }));
     for (let attempt = 0; attempt < 3; attempt++) {
       const latest = await this.snapshot();
@@ -77,6 +78,7 @@ export class GitHub {
         if (!change.bytes) throw new Error('Sparningen avbröts. Dina ändringar finns kvar.');
         change.baseSha = remote?.sha || null;
       }
+      if(changes.some(c=>!c.delete&&c.bytes.length>fileLimit(c.path))||changes.reduce((total,c)=>total+(c.delete?0:c.bytes.length),0)>50*1024*1024)throw new Error('De sammanslagna filerna överskrider filgränsen eller 50 MB totalt.');
       const entries = [];
       for (const change of changes) {
         if (change.delete) { if (latest.files.some(file => file.path === change.path)) entries.push({ path: change.path, mode: '100644', type: 'blob', sha: null }); continue; }

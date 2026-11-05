@@ -41,7 +41,7 @@ bilagor/      Filer som släppts eller klistrats in i texten
 dokument/     Övrigt föreningsmaterial
 ```
 
-Bilder sparas med relativa länkar. Externa bilder laddas inte automatiskt, för att undvika att dela besöksinformation med okända bildservrar. Välj PNG, JPG, WebP eller GIF. Videoklipp får vara högst 25 MB och övriga filer 5 MB; högst 200 filer och 50 MB totalt per uppladdning. Filer och mappar kan släppas i filträdet. Filer som operativsystemet exponerar via urklipp kan klistras in där med Ctrl+V. En mappväljare finns som alternativ till att dra mappar. Tomma mappar och dolda filer stöds inte.
+Bilder sparas med relativa länkar. Externa bilder laddas inte automatiskt, för att undvika att dela besöksinformation med okända bildservrar. Välj PNG, JPG, WebP, GIF eller SVG. Videoklipp får vara högst 25 MB och övriga filer 5 MB; högst 200 filer och 50 MB totalt per uppladdning. Filer och mappar kan släppas i filträdet. Filer som operativsystemet exponerar via urklipp kan klistras in där med Ctrl+V. En mappväljare finns som alternativ till att dra mappar. Tomma mappar och dolda filer stöds inte.
 
 Arbetsutkast och osparade träningspass finns bara i minnet. Spara innan sidan stängs. Sidans inbyggda påminnelse varnar när det finns osparat arbete. Flera personer kan arbeta samtidigt; det finns ingen realtidssynkronisering.
 
@@ -63,7 +63,7 @@ Nedladdningsknappar i filträdet hämtar enstaka filer eller mappar som ZIP. Dir
 
 Sidan följer enhetens ljusa eller mörka tema automatiskt. På telefon öppnar **Filer** en sidopanel till vänster. Panelen kan också svepas fram och tillbaka; när en fil väljs stängs den och innehållet visas. På dator är filträdet alltid synligt. Textfärg väljs ur en liten palett; färg och understrykning lagras som HTML-inslag i Markdown.
 
-Word-import sker lokalt med Mammoth för `.docx`. Originalfilen sparas tillsammans med en Markdown-kopia och eventuella bilder. Vanliga rubriker, textmarkeringar, listor, länkar och tabeller följer med; sidlayout och avancerade Word-funktioner kan förenklas. Äldre `.doc` behöver först sparas som `.docx`.
+Word är endast ett importformat. `.docx` konverteras lokalt med Mammoth till Markdown och eventuella bilder. `.doc` från Word 97–2003 läses som text med CFB/MS-DOC; bilder och formatering från äldre DOC följer inte med. En obligatorisk förhandsvisning visar innehållet och varnar för sådant som kan behöva rättas: sidhuvud/sidfot, spalter, textrutor, diagram, sammanslagna tabellceller, formler, kommentarer och spårade ändringar. Bara Markdown och bilder sparas. Ingen Word-fil skapas eller uppdateras, och nya Word-original sparas inte. Redan befintliga Word-original tas inte bort. Även Word-filer som släpps i ett dokument konverteras till en Markdown-bilaga före sparning.
 
 CSV öppnas som en redigerbar tabell med Papa Parse. Excel `.xlsx` öppnas med ExcelJS och kan växla mellan arbetsbokens blad. Piltangenter och Enter flyttar mellan celler, Shift + pilar eller drag markerar områden, Delete tömmer dem, och Ctrl+C/V kopierar och klistrar in cellområden. Ctrl+Z/Y ångrar och gör om ändringar. Dubbelklick eller F2 börjar redigera en cell. Gränsen är 2 000 rader och 100 kolumner per blad. CSV-avgränsare och radslut bevaras. Excel-formler beräknas när arbetsboken öppnas i Excel; webbsidan kör inte formler. Komplexa Excel-arbetsböcker kan innehålla funktioner som ExcelJS inte bevarar fullt ut.
 
@@ -100,3 +100,11 @@ På telefon startar fokusläge när skrivytan får fokus. Sidhuvud, dokumentrad 
 Vid felsökning av iPhones tangentbord kan `?keyboard-debug=1` läggas till i adressen. **Kopiera felsökning** kopierar en begränsad logg av skärmhöjd, zoom, fokusstatus och diagnostikversion. Loggen hålls i minnet och innehåller varken dokumenttext, användarnamn eller inloggningsuppgifter. Mätningen känner igen delvis återställd höjd och kontrollerar även ändringar utan resize-händelse; den är fortfarande en uppskattning av tangentbordets status eftersom Safari inte exponerar en direkt status för det.
 
 När telefonens filpanel är öppen stannar vertikala pekgester i panelen. Filträdet och listan med senaste filer kan rullas; rubrik, knappar, bakgrund och rullgränser släpper inte vidare gesten till dokumentet bakom panelen. Vänsterdrag för att stänga panelen fungerar fortsatt. Verktyg i redigeringsmenyn behåller textmarkeringen under trycket så att färgväljare och andra åtgärder öppnas innan menyn ändrar fokus.
+
+## PDF, SVG och ljud
+
+PDF visas med PDF.js: sidbyte, sidräknare och zoom fungerar i telefon och på dator. PDF är en läsvy, inte en redigerare; textmarkering och formulärredigering erbjuds inte. Worker, teckensnitt och andra PDF-resurser levereras från samma webbplats. SVG visas i bildvyn med zoom/panorering; aktivt innehåll och externa resursreferenser tas bort i förhandsvisningen. Originalfilen kan fortfarande laddas ner.
+
+Ljudfiler i MP3, WAV, OGG/OGA, M4A, AAC, FLAC, OPUS och WEBA öppnas med webbläsarens uppspelningsreglage för spela/pausa och spolning. Kodekstödet beror på webbläsaren. Uppspelningen stoppas när en annan fil öppnas eller användaren loggar ut. Länkar till visningsbara bilagor öppnar motsvarande vy.
+
+Filgränserna visas vid uppladdning: video högst 25 MB per fil, övrigt högst 5 MB per fil; högst 200 filer och 50 MB per sparning/uppladdning. Word-konverteringens resulterande filer kontrolleras också. Ingen total biblioteksgräns sätts av appen; den krypterade enhetscachen har en separat gräns kring 80 MB.

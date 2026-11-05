@@ -1,3 +1,5 @@
 import { defineConfig } from 'vite';
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-export default defineConfig({ build: { rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), setup: resolve(import.meta.dirname, 'installera.html') } } } });
+const pdfAssets={name:'local-pdf-assets',configureServer(server){server.middlewares.use((req,res,next)=>{const match=/^\/pdfjs\/(cmaps|standard_fonts|wasm|iccs)\/([\w.-]+)$/.exec((req.url||'').split('?')[0]);if(!match)return next();const file=resolve(import.meta.dirname,'node_modules/pdfjs-dist',match[1],match[2]);if(!existsSync(file))return next();res.setHeader('Content-Type',file.endsWith('.wasm')?'application/wasm':'application/octet-stream');res.end(readFileSync(file));});},writeBundle(options){for(const folder of ['cmaps','standard_fonts','wasm','iccs']){const dest=resolve(options.dir,'pdfjs',folder);mkdirSync(dest,{recursive:true});cpSync(resolve(import.meta.dirname,'node_modules/pdfjs-dist',folder),dest,{recursive:true});}}};
+export default defineConfig({ plugins:[pdfAssets],build: { rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), setup: resolve(import.meta.dirname, 'installera.html') } } } });

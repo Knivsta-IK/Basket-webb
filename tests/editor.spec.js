@@ -131,12 +131,13 @@ test('CSV redigeras med pilar, Enter, cellmarkering och inklistring', async ({ p
   await page.getByRole('button', {name:'Spara ändringar',exact:true}).click(); await page.getByLabel('Vad har du ändrat?').fill('Uppdaterar schemat'); await page.locator('dialog').getByRole('button', {name:'Spara ändringar',exact:true}).click(); await expect(page.locator('dialog')).toHaveCount(0);
   const csv = Buffer.from(writes.find(w=>w.path==='/git/blobs').body.content,'base64').toString('utf8'); expect(csv).toContain('Ny övning;10'); expect(csv).toContain('Skott;Rörelse;20');
 });
-test('Word-import behåller originalet och gör redigerbar Markdown', async ({ page }) => {
+test('Word-import granskas och sparas som enbart redigerbar Markdown', async ({ page }) => {
   const docx = zipSync({ '[Content_Types].xml': strToU8('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'), 'word/document.xml': strToU8('<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Viktig Wordtext</w:t></w:r></w:p></w:body></w:document>') });
   await page.getByRole('button',{name:'Ladda upp filer',exact:true}).click(); await page.locator('input[name=files]').setInputFiles({name:'Anteckningar.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from(docx)}); await page.getByRole('button',{name:'Fortsätt',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Granska Word-importen',exact:true})).toBeVisible();await expect(page.locator('.word-import-preview')).toContainText('Viktig Wordtext');await page.getByRole('button',{name:'Fortsätt',exact:true}).click();
   await page.getByLabel('Vad har du ändrat?').fill('Importerar Wordmaterial'); await page.locator('dialog').getByRole('button',{name:'Spara ändringar',exact:true}).click(); await expect(page.locator('dialog')).toHaveCount(0);
-  const entries=writes.find(w=>w.path==='/git/trees').body.tree; expect(entries.map(e=>e.path)).toEqual(['ovningar/Anteckningar.docx','ovningar/Anteckningar.md']);
-  const md=Buffer.from(writes.filter(w=>w.path==='/git/blobs')[1].body.content,'base64').toString('utf8');expect(md).toContain('**Viktig Wordtext**');
+  const entries=writes.find(w=>w.path==='/git/trees').body.tree; expect(entries.map(e=>e.path)).toEqual(['ovningar/Anteckningar.md']);
+  const md=Buffer.from(writes.filter(w=>w.path==='/git/blobs')[0].body.content,'base64').toString('utf8');expect(md).toContain('**Viktig Wordtext**');
 });
 test('Excel-blad kan öppnas och sparas med redigerade celler', async ({ page }) => {
   const workbook=new ExcelJS.Workbook();const first=workbook.addWorksheet('Grupp A');first.addRow(['Namn','Antal']);first.addRow(['Bollar',8]);workbook.addWorksheet('Grupp B').addRow(['Andra gruppen']);const bytes=Buffer.from(await workbook.xlsx.writeBuffer());
@@ -466,4 +467,59 @@ test('textfärg öppnas med ett riktigt tryck från telefonens verktygsmeny',asy
   await tap(page.getByRole('button',{name:'Blå',exact:true}));await expect(editor.locator('span[style]')).toHaveCSS('color','rgb(57, 123, 184)');
   await expect(page.locator('dialog')).toHaveCount(0);await expect(page.locator('.recent-tools #text-color')).toBeVisible();
   await tap(page.getByRole('button',{name:'Textfärg',exact:true}));await expect(page.getByRole('heading',{name:'Välj textfärg',exact:true})).toBeVisible();
+});
+
+function smallPdf(){
+  const stream=text=>{const body=`BT /F1 20 Tf 30 320 Td (${text}) Tj ET\n`;return `<< /Length ${Buffer.byteLength(body)} >>\nstream\n${body}endstream`;};
+  const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>',stream('Basket page one'),'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>',stream('Basket page two'),'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+  let pdf='%PDF-1.4\n',offsets=[0];for(const [i,object]of objects.entries()){offsets.push(Buffer.byteLength(pdf));pdf+=`${i+1} 0 obj\n${object}\nendobj\n`;}const xref=Buffer.byteLength(pdf);pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`+offsets.slice(1).map(offset=>`${String(offset).padStart(10,'0')} 00000 n \n`).join('')+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf);
+}
+function smallWav(){const data=Buffer.alloc(44+16000);data.write('RIFF');data.writeUInt32LE(data.length-8,4);data.write('WAVEfmt ',8);data.writeUInt32LE(16,16);data.writeUInt16LE(1,20);data.writeUInt16LE(1,22);data.writeUInt32LE(8000,24);data.writeUInt32LE(16000,28);data.writeUInt16LE(2,32);data.writeUInt16LE(16,34);data.write('data',36);data.writeUInt32LE(16000,40);for(let i=0;i<8000;i++)data.writeInt16LE(Math.round(Math.sin(i/8000*440*2*Math.PI)*4000),44+i*2);return data;}
+test('PDF visas lokalt med flera sidor och zoom även på telefon',async({page})=>{
+  stored['dokument/basket.pdf']=smallPdf();await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await page.locator('[data-path="dokument/basket.pdf"]').click();
+  const canvas=page.locator('.pdf-view canvas');await expect(canvas).toHaveAttribute('aria-label','PDF sida 1');await expect(page.locator('.pdf-view output')).toHaveText('Sida 1 av 2');await expect(page.locator('.pdf-status')).toBeEmpty();
+  expect(await canvas.evaluate(el=>{const pixels=el.getContext('2d').getImageData(0,0,el.width,el.height).data;let dark=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]&&pixels[i]<180&&pixels[i+1]<180&&pixels[i+2]<180)dark++;return dark;})).toBeGreaterThan(20);
+  await expect.poll(()=>canvas.evaluate(el=>el.width)).toBeGreaterThan(0);await page.getByRole('button',{name:'Nästa sida',exact:true}).click();await expect(canvas).toHaveAttribute('aria-label','PDF sida 2');
+  const width=await canvas.evaluate(el=>el.width);await page.getByRole('button',{name:'Zooma in PDF',exact:true}).click();await expect.poll(()=>canvas.evaluate(el=>el.width)).toBeGreaterThan(width);
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.getByRole('button',{name:'Filer',exact:true}).click();await page.locator('[data-path="dokument/start.md"]').click();await expect(page.locator('.pdf-view')).toHaveCount(0);
+});
+test('SVG visas med zoom och externa resurser och aktivt innehåll körs inte',async({page})=>{
+  stored['bilder/plan.svg']='<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><script>window.svgExecuted=true</script><foreignObject><div xmlns="http://www.w3.org/1999/xhtml">unsafe</div></foreignObject><image href="https://example.invalid/track.png"/><rect width="400" height="300" fill="#f0a030"/></svg>';
+  let external=0;page.on('request',request=>{if(request.url().includes('example.invalid'))external++;});
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await page.locator('[data-path="bilder/plan.svg"]').click();await expect(page.locator('.zoom-viewport img')).toBeVisible();
+  expect(await page.locator('.zoom-viewport img').evaluate(el=>el.naturalWidth)).toBe(400);expect(await page.evaluate(()=>window.svgExecuted)).toBeUndefined();expect(external).toBe(0);
+  const source=await page.locator('.zoom-viewport img').evaluate(async el=>fetch(el.src).then(r=>r.text()));expect(source).not.toContain('foreignObject');expect(source).not.toContain('example.invalid');
+  await page.getByRole('button',{name:'Zooma in',exact:true}).click();await expect(page.locator('.zoom-viewport')).toHaveAttribute('data-zoomed','true');
+});
+test('ljud kan spelas, pausas och stoppas när man byter fil',async({page})=>{
+  stored['ljud/signal.wav']=smallWav();await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await page.locator('[data-path="ljud/signal.wav"]').click();const audio=page.locator('audio');
+  await expect(audio).toBeVisible();await expect.poll(()=>audio.evaluate(el=>el.readyState)).toBeGreaterThan(0);
+  await audio.evaluate(el=>el.play());await expect.poll(()=>audio.evaluate(el=>el.paused)).toBe(false);await audio.evaluate(el=>{el.pause();el.currentTime=.5;});await expect.poll(()=>audio.evaluate(el=>el.currentTime)).toBeCloseTo(.5,1);
+  const handle=await audio.elementHandle();await page.locator('[data-path="dokument/start.md"]').click();expect(await handle.evaluate(el=>el.paused)).toBe(true);await expect(page.locator('audio')).toHaveCount(0);
+});
+
+test('Word-import varnar för layout som förenklas och kan avbrytas utan att spara',async({page})=>{
+  const docx=zipSync({'[Content_Types].xml':strToU8('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'),'word/document.xml':strToU8('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Text med särskild layout</w:t></w:r></w:p><w:sectPr><w:cols w:num="2"/></w:sectPr></w:body></w:document>'),'word/header1.xml':strToU8('<w:hdr/>'),'word/charts/chart1.xml':strToU8('<chart/>')});
+  await page.getByRole('button',{name:'Ladda upp filer',exact:true}).click();await page.locator('input[name=files]').setInputFiles({name:'Layout.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from(docx)});await page.getByRole('button',{name:'Fortsätt',exact:true}).click();
+  await expect(page.locator('.import-warnings')).toContainText('Sidhuvud eller sidfot');await expect(page.locator('.import-warnings')).toContainText('Diagram');await expect(page.locator('.import-warnings')).toContainText('Flera spalter');await page.locator('dialog').getByRole('button',{name:'Avbryt',exact:true}).click();expect(writes).toHaveLength(0);
+});
+
+async function oldWordFixture(){
+  const {default:CFB}=await import('cfb');const body='Äldre Wordtext med åäö\rNästa stycke\r',document=Buffer.alloc(4096),table=Buffer.alloc(21);
+  document.writeUInt16LE(0xa5ec,0);document.writeUInt16LE(0xc1,2);document.writeUInt16LE(0x0200,0x0a);document.writeUInt32LE(body.length,0x4c);document.writeUInt32LE(0,0x1a2);document.writeUInt32LE(21,0x1a6);document.write(body,512,'utf16le');
+  table[0]=2;table.writeUInt32LE(16,1);table.writeUInt32LE(0,5);table.writeUInt32LE(body.length,9);table.writeUInt32LE(512,15);
+  const cfb=CFB.utils.cfb_new();CFB.utils.cfb_add(cfb,'WordDocument',document);CFB.utils.cfb_add(cfb,'1Table',table);return Buffer.from(CFB.write(cfb,{type:'buffer'}));
+}
+test('äldre DOC blir text i Markdown och originalet sparas inte',async({page})=>{
+  await page.getByRole('button',{name:'Ladda upp filer',exact:true}).click();await page.locator('input[name=files]').setInputFiles({name:'Gammal.doc',mimeType:'application/msword',buffer:await oldWordFixture()});await page.getByRole('button',{name:'Fortsätt',exact:true}).click();
+  await expect(page.locator('.word-import-preview')).toContainText('Äldre Wordtext med åäö');await expect(page.locator('.import-warnings')).toContainText('Bilder, tabeller och formatering');await page.getByRole('button',{name:'Fortsätt',exact:true}).click();
+  await page.getByLabel('Vad har du ändrat?').fill('Importerar äldre material');await page.locator('dialog').getByRole('button',{name:'Spara ändringar',exact:true}).click();await expect(page.locator('dialog')).toHaveCount(0);
+  expect(writes.find(w=>w.path==='/git/trees').body.tree.map(file=>file.path)).toEqual(['ovningar/Gammal.md']);expect(Buffer.from(writes.find(w=>w.path==='/git/blobs').body.content,'base64').toString()).toContain('Nästa stycke');
+});
+test('Word som släpps i dokumentet blir en Markdown-bilaga',async({page})=>{
+  const payload=(await oldWordFixture()).toString('base64');await page.locator('.tiptap').evaluate((el,base64)=>{const dt=new DataTransfer();dt.items.add(new File([Uint8Array.from(atob(base64),c=>c.charCodeAt(0))],'Text.doc',{type:'application/msword'}));el.dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true,clientX:el.getBoundingClientRect().x+15,clientY:el.getBoundingClientRect().y+15}));},payload);
+  await expect(page.getByRole('heading',{name:'Granska Word-importen',exact:true})).toBeVisible();await page.getByRole('button',{name:'Fortsätt',exact:true}).click();await expect(page.locator('.tiptap').getByRole('link',{name:'Text.md',exact:true})).toBeVisible();
+  await saveMediaDocument(page);const tree=writes.find(w=>w.path==='/git/trees').body.tree;expect(tree).toHaveLength(2);expect(tree.some(file=>file.path.endsWith('.doc'))).toBe(false);expect(tree.every(file=>file.path.endsWith('.md'))).toBe(true);
 });
