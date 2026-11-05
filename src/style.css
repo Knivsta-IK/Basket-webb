@@ -76,11 +76,11 @@ body.workspace-open{top:var(--workspace-top,0px);bottom:auto;height:var(--worksp
 .tool-caption{font-size:14px}
 body.editing-focus{--header-height:0px}
 .editing-focus .topbar,.editing-focus .document-footer{display:none!important}
-.editing-focus #finish-editing{background:#e8eaf5;color:#343b6b}
+
 @media(max-width:760px),(pointer:coarse){
   .editing-focus .doc-bar,.editing-focus #mobile-files,.editing-focus .planner{display:none!important}
   .editing-focus .document-area{padding:4px 8px}
   .editing-focus .paper{padding:18px 14px;border:0;border-radius:0}
   .editing-focus .sidebar{top:var(--workspace-top,0px)}
 }
-@media(prefers-color-scheme:dark){.tools-dropdown{background:#202024}.editing-focus #finish-editing{background:#303449;color:#e1e5ff}}
+@media(prefers-color-scheme:dark){.tools-dropdown{background:#202024}}

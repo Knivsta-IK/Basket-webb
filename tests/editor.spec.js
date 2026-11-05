@@ -8,6 +8,7 @@ import ExcelJS from 'exceljs/dist/exceljs.min.js';
 const shaFor = content => createHash('sha1').update(content).digest('hex');
 const contents = { 'dokument/schema.csv': 'Namn;Tid\r\nPassningar;10\r\nSkott;15', 'dokument/start.md': '# Välkommen\n\nDet här är materialet.', 'ovningar/ett.md': '# Övning ett\n\nTräna passningar.', 'ovningar/tva.md': '# Övning två\n\nTräna rörelse.', 'ovningar/tre.md': '# Övning tre\n\nTräna skott.', 'ovningar/fyra.md': '# Övning fyra\n\nTräna tillsammans.' };
 let writes, stored;
+async function phoneViewport(page){await page.setViewportSize({width:390,height:844});await page.evaluate(()=>Object.defineProperty(navigator,'maxTouchPoints',{configurable:true,value:1}));}
 async function clickTool(page,name){const button=page.getByRole('button',{name,exact:true});if(!await button.isVisible())await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await button.click();}
 async function selectTextType(page,value){if(!await page.getByLabel('Texttyp',{exact:true}).isVisible())await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await page.getByLabel('Texttyp',{exact:true}).selectOption(value);}
 
@@ -361,7 +362,7 @@ test('verktygsfältet följer telefonens synliga yta ovanför tangentbordet och 
 });
 
 test('telefonens fokusläge frigör skrivytan och håller senaste verktygen på en rad',async({page})=>{
-  await page.setViewportSize({width:390,height:844});await page.locator('.tiptap').click();
+  await phoneViewport(page);await page.locator('.tiptap').click();
   await expect(page.locator('body')).toHaveClass(/editing-focus/);await expect(page.locator('.topbar')).toBeHidden();await expect(page.locator('#doc-bar')).toBeHidden();await expect(page.locator('#mobile-files')).toBeHidden();
   for(const width of [320,390]){
     await page.setViewportSize({width,height:844});
@@ -377,18 +378,29 @@ test('telefonens fokusläge frigör skrivytan och håller senaste verktygen på 
   await page.getByRole('button',{name:'Understruken',exact:true}).click();await expect(editor.locator('u')).toContainText('Tydligare instruktion');await expect(page.locator('#more-tools')).toBeHidden();await expect(page.locator('.recent-tools [data-tool=underline]')).toBeVisible();
   await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await page.getByLabel('Texttyp',{exact:true}).selectOption('2');await expect(editor.locator('h2')).toContainText('Tydligare instruktion');await expect(page.locator('#more-tools')).toBeHidden();
   await page.screenshot({path:'/tmp/basket-focus-phone.png',clip:{x:0,y:0,width:390,height:380}});
-  await page.getByRole('button',{name:'Avsluta fokusläge',exact:true}).click();await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
+  await editor.evaluate(el=>el.blur());await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
   await page.getByRole('button',{name:'Spara ändringar',exact:true}).click();await expect(page.getByLabel('Vad har du ändrat?')).toBeVisible();
 });
 
-test('bocken lämnar fokusläge även om tangentbordet stängs före klick och sen fokus anländer',async({page})=>{
-  await page.setViewportSize({width:390,height:844});const editor=page.locator('.tiptap');await editor.click();await expect(page.locator('body')).toHaveClass(/editing-focus/);
-  // Safari can close the keyboard and move the toolbar before delivering a click.
-  await page.locator('#finish-editing').dispatchEvent('pointerdown',{pointerType:'touch',pointerId:41,button:0,bubbles:true,cancelable:true});
-  await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:844});visualViewport.dispatchEvent(new Event('resize'));});
-  await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('.topbar')).toBeVisible();
-  // A queued editor focus must not re-enter the mode after the user's explicit exit.
-  await editor.focus();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
+test('iPhones tangentbordsbock lämnar fokusläget när tangentbordet stängs utan blur',async({page})=>{
+  await phoneViewport(page);const editor=page.locator('.tiptap');await editor.click();await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  const keyboard=height=>page.evaluate(height=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:height});visualViewport.dispatchEvent(new Event('resize'));},height);
+  await keyboard(380);await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  await keyboard(410);await expect(page.locator('body')).toHaveClass(/editing-focus/);
+  await keyboard(844);await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(editor).not.toBeFocused();
   await editor.click();await expect(page.locator('body')).toHaveClass(/editing-focus/);
-  await page.locator('#finish-editing').click();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(editor).not.toBeFocused();
+});
+test('iPhones tangentbordsbock lämnar fokusläget vid blur och verktyg får behålla fokusläget',async({page})=>{
+  await phoneViewport(page);const editor=page.locator('.tiptap');await editor.click();
+  await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await page.getByLabel('Texttyp',{exact:true}).focus();
+  for(const height of [380,844]){await page.evaluate(height=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:height});visualViewport.dispatchEvent(new Event('resize'));},height);await expect(page.locator('body')).toHaveClass(/editing-focus/);}
+  await page.getByLabel('Texttyp',{exact:true}).selectOption('2');await editor.click();
+  await editor.evaluate(el=>el.blur());await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('#doc-bar')).toBeVisible();
+});
+
+
+test('datorn behåller normal vy vid redigering och sidan har ingen egen bock',async({page})=>{
+  await page.evaluate(()=>Object.defineProperty(navigator,'maxTouchPoints',{configurable:true,value:0}));
+  for(const width of [800,1440]){await page.setViewportSize({width,height:900});await page.locator('.tiptap').click();await page.keyboard.type('Mer material');await expect(page.locator('body')).not.toHaveClass(/editing-focus/);}
+  await expect(page.locator('body')).not.toHaveClass(/editing-focus/);await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('#finish-editing')).toHaveCount(0);
 });
