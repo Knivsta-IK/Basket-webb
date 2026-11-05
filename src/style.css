@@ -26,3 +26,39 @@ html{width:100%;max-width:100%;overflow-x:clip}body.workspace-open{position:fixe
 @media(orientation:landscape) and (max-width:1000px) and (max-height:500px){.workspace-open .sidebar{gap:6px;padding:10px}.workspace-open .sidebar .search input{padding-top:7px;padding-bottom:7px}.workspace-open .sidebar .tree-folder summary{padding-top:6px;padding-bottom:6px}.workspace-open .sidebar .tree-file{padding-top:7px;padding-bottom:7px}.workspace-open .sidebar .sidebar-bottom{padding-top:6px}}
 @media(max-width:760px) and (orientation:portrait){.workspace-open .sidebar{touch-action:pan-y;overscroll-behavior:contain}.workspace-open .library-backdrop{touch-action:none}.workspace.library-open .main,.workspace.drawer-dragging .main{pointer-events:none;touch-action:none}.workspace.library-open .zoom-viewport,.workspace.drawer-dragging .zoom-viewport{pointer-events:none}.workspace.library-open .document-area,.workspace.drawer-dragging .document-area{overscroll-behavior:none}}
 .document-media{display:block;max-width:100%;margin:20px 0;position:relative;white-space:normal}.media-frame{position:relative;max-width:100%;min-width:min(80px,100%);background:#f1f1f5;border-radius:6px;overflow:visible}.media-frame>.document-media-element{position:absolute!important;inset:0;display:block;width:100%!important;height:100%!important;max-width:100%;max-height:100%;object-fit:contain;margin:0!important;border-radius:6px}.media-frame>video{background:transparent}.media-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:15px;text-align:center;font-size:12px;line-height:1.6;color:var(--muted);background:#f1f1f5;border-radius:6px;pointer-events:none}.media-selected>.media-frame{outline:2px solid #818cf8;outline-offset:1px}.media-frame .media-resize-handle{position:absolute;z-index:5;width:30px;height:30px;border:0;padding:0;background:transparent;touch-action:none;outline:none;border-radius:50%;display:block}.media-resize-handle::after{content:'';position:absolute;left:9px;top:9px;width:12px;height:12px;border:2px solid #818cf8;background:#fff;border-radius:3px;box-shadow:0 1px 4px #00000020}.media-frame .handle-nw{left:-15px;top:-15px;cursor:nwse-resize}.media-frame .handle-ne{right:-15px;top:-15px;cursor:nesw-resize}.media-frame .handle-sw{left:-15px;bottom:-15px;cursor:nesw-resize}.media-frame .handle-se{right:-15px;bottom:-15px;cursor:nwse-resize}.media-resizing{user-select:none;-webkit-user-select:none}.document-video-controls{display:flex;align-items:center;flex-wrap:wrap;gap:9px;max-width:100%;padding:13px 0 0;white-space:normal}.document-video-controls>button{font-size:12px;padding:7px 13px;min-width:64px;flex-shrink:0}.document-video-controls>input[type=range]{margin:0;padding:0;flex:1;min-width:65px;width:auto;max-width:100%;height:30px;border:0;box-shadow:none;accent-color:#818cf8;touch-action:pan-x}.video-time{flex-basis:100%;color:var(--muted);font-size:10px;line-height:1.5;font-variant-numeric:tabular-nums}.media-message{max-width:100%;font-size:11px;color:var(--muted);line-height:1.6;white-space:normal}.media-message:empty{display:none}.standalone-video{height:100%;min-height:200px;display:flex;justify-content:center;align-items:center}.standalone-video .document-media{margin:auto;max-width:100%;width:100%}.standalone-video .media-frame,.standalone-video .document-video-controls{margin-left:auto;margin-right:auto}.tiptap .document-media.ProseMirror-selectednode{outline:none}@media(prefers-color-scheme:dark){.media-frame,.media-placeholder{background:#26262d}.media-resize-handle::after{background:#27272a}}
+/* The document is the scroll container. Clipped shell panels cannot be moved by caret scrolling. */
+body.workspace-open{top:var(--workspace-top,0px);bottom:auto;height:var(--workspace-height,100dvh)}
+.workspace-open #app,.workspace-open .workspace,.workspace-open .main{overflow:clip}
+.workspace-open .doc-bar,.workspace-open .format-bar{position:relative;z-index:6}
+.workspace-open .format-bar{gap:4px;padding:8px 20px;background:var(--toolbar-background,#fafafa)}
+.format-bar button{width:36px;min-width:36px;height:36px;border-radius:8px;color:var(--ink)}
+.format-bar button svg{width:21px;height:21px}
+.format-bar select{min-height:36px}
+.icon-button{width:36px;min-width:36px;height:36px;padding:7px;border-radius:8px}
+.icon-button svg,.file-menu-button svg{width:21px;height:21px}
+.tree-folder summary:before{display:none}
+.tree-folder summary>svg:first-child{width:14px;height:14px;transition:transform .15s}
+.tree-folder[open]>summary>svg:first-child{transform:rotate(90deg)}
+.document-video-controls>button{min-height:40px;gap:7px}
+.document-video-controls>button svg{width:18px;height:18px}
+@media(prefers-color-scheme:dark){.workspace-open .format-bar{--toolbar-background:#202024}}
+@media(max-width:760px),(pointer:coarse){
+  .workspace-open .format-bar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;padding:8px 10px}
+  .workspace-open .format-bar .divider{display:none}
+  .workspace-open .format-bar select{grid-column:span 2;min-width:0;width:100%;height:44px;padding:7px 4px;font-size:16px}
+  .workspace-open .format-bar button{width:100%;min-width:44px;height:44px;color:var(--ink)}
+  .workspace-open .format-bar button svg{width:24px;height:24px}
+  .icon-button,.file-menu-button,.tree-download,.image-tools button,.plan-order button{min-width:44px;min-height:44px;height:44px}
+  .icon-button svg,.file-menu-button svg,.tree-download svg,.image-tools button svg{width:24px;height:24px}
+  .workspace-open .mobile-files{min-height:44px;top:8px;padding:8px 10px;gap:6px;font-size:12px}
+  .workspace-open .mobile-files svg{width:23px;height:23px}
+  .workspace-open .doc-bar{min-height:60px}
+  .workspace-open .doc-actions .primary,.workspace-open .doc-actions .secondary{min-height:44px}
+  .workspace-open .tree-file,.workspace-open .tree-folder summary,.workspace-open .filters button,.workspace-open #toggle-library{min-height:44px}
+  .workspace-open .tree-file svg,.workspace-open .tree-folder summary>svg:not(:first-child){width:22px;height:22px}
+  .workspace-open .tree-folder summary{gap:5px;padding-left:2px;padding-right:0}
+  .workspace-open .tree-folder>div{margin-left:4px;padding-left:2px}
+  .workspace-open .tree-file{padding-left:5px;padding-right:4px;gap:6px;font-size:13px}
+  .document-video-controls>button{min-height:44px}
+}
+.workspace-open .mobile-files{z-index:9}

@@ -1,3 +1,4 @@
+import { icon } from './icons.js';
 import { Node } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 import { closeHistory } from '@tiptap/pm/history';
@@ -43,12 +44,12 @@ export function mediaNodeView({node,editor,getPos,getSource,loadSource,onError=(
   if(kind==='video'){
     media.playsInline=true;media.preload='metadata';
     controls=document.createElement('div');controls.className='document-video-controls';controls.hidden=true;
-    play=document.createElement('button');play.type='button';play.className='secondary';play.textContent='Spela';play.setAttribute('aria-label','Spela video');play.disabled=true;
+    play=document.createElement('button');play.type='button';play.className='secondary';play.innerHTML=`${icon('play')}<span>Spela</span>`;play.setAttribute('aria-label','Spela video');play.disabled=true;
     slider=document.createElement('input');slider.type='range';slider.min='0';slider.max='0';slider.step='0.001';slider.value='0';slider.disabled=true;slider.setAttribute('aria-label','Sök i videon');
     time=document.createElement('span');time.className='video-time';time.textContent='0:00.000 / 0:00.000';
     controls.append(play,slider,time);dom.append(controls);
     play.addEventListener('click',()=>{select();if(media.paused){const result=media.play();result?.catch(()=>{message.textContent='Klippet kunde inte spelas. Kontrollera att formatet stöds av webbläsaren.';});}else media.pause();},events);
-    const updatePlayback=()=>{play.textContent=media.paused?'Spela':'Pausa';play.setAttribute('aria-label',media.paused?'Spela video':'Pausa video');const duration=Number.isFinite(media.duration)?media.duration:0;slider.max=String(duration);slider.disabled=duration<=0;play.disabled=media.readyState<1;if(!scrubbing)slider.value=String(media.currentTime||0);time.textContent=`${clock(scrubbing?Number(slider.value):media.currentTime)} / ${clock(duration)}`;};
+    const updatePlayback=()=>{play.innerHTML=`${icon(media.paused?'play':'pause')}<span>${media.paused?'Spela':'Pausa'}</span>`;play.setAttribute('aria-label',media.paused?'Spela video':'Pausa video');const duration=Number.isFinite(media.duration)?media.duration:0;slider.max=String(duration);slider.disabled=duration<=0;play.disabled=media.readyState<1;if(!scrubbing)slider.value=String(media.currentTime||0);time.textContent=`${clock(scrubbing?Number(slider.value):media.currentTime)} / ${clock(duration)}`;};
     for(const name of ['play','pause','ended','loadedmetadata','durationchange','timeupdate','seeked'])media.addEventListener(name,updatePlayback,events);
     slider.addEventListener('input',()=>{scrubbing=true;media.pause();if(Number.isFinite(media.duration)&&media.duration>0)media.currentTime=Math.min(media.duration,Math.max(0,Number(slider.value)));updatePlayback();},events);
     slider.addEventListener('change',()=>{scrubbing=false;updatePlayback();},events);

@@ -1,5 +1,6 @@
+import { icon } from './icons.js';
 export function mountImageView(container,image){
-  container.innerHTML='<div class="image-tools"><button class="secondary" data-zoom-out aria-label="Zooma ut">−</button><output aria-label="Bildzoom">100%</output><button class="secondary" data-zoom-in aria-label="Zooma in">+</button><button class="secondary" data-fit>Anpassa</button></div><div class="zoom-viewport" role="region" aria-label="Bild – zooma och panorera" tabindex="0"></div>';
+  container.innerHTML=`<div class="image-tools"><button class="secondary" data-zoom-out aria-label="Zooma ut">${icon('minus')}</button><output aria-label="Bildzoom">100%</output><button class="secondary" data-zoom-in aria-label="Zooma in">${icon('plus')}</button><button class="secondary" data-fit>Anpassa</button></div><div class="zoom-viewport" role="region" aria-label="Bild – zooma och panorera" tabindex="0"></div>`;
   const viewport=container.querySelector('.zoom-viewport'),output=container.querySelector('output');viewport.append(image);image.draggable=false;
   const abort=new AbortController(),options={signal:abort.signal};
   const navigationOwnsGesture=()=>{const workspace=container.closest('.workspace');return !!workspace&&(workspace.classList.contains('library-open')||workspace.classList.contains('drawer-dragging')||workspace.dataset.gestureOwner==='drawer');};const points=new Map(),edgePointers=new Set();let scale=1,x=0,y=0,width=1,height=1,lastPoint=null,lastPinch=null,fittedWidth=-1,fittedHeight=-1;

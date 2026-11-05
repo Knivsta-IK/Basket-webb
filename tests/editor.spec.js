@@ -62,7 +62,7 @@ test('intern kopiering behåller formatering, annat dokument får vanlig text', 
   await expect(editor).toContainText('Formaterad text'); await expect(editor.locator('strong')).toHaveCount(0);
 });
 test('träningsbyggaren kräver fyra övningar och kan ordna om dem', async ({ page }) => {
-  for (const name of ['ett', 'tva', 'tre', 'fyra']) { await page.locator(`[data-path="ovningar/${name}.md"]`).click(); await page.getByRole('button', { name: '+ Till träning', exact: true }).click(); }
+  for (const name of ['ett', 'tva', 'tre', 'fyra']) { await page.locator(`[data-path="ovningar/${name}.md"]`).click(); await page.getByRole('button', { name: 'Till träning', exact: true }).click(); }
   await expect(page.locator('.plan-item')).toHaveCount(4); await expect(page.getByRole('button', { name: 'Spara träning', exact: true })).toBeEnabled();
   await page.getByLabel('Flytta upp Övning fyra').click(); await expect(page.locator('.plan-item').nth(2)).toContainText('Övning fyra');
   await page.getByLabel('Ta bort Övning ett').click(); await expect(page.getByRole('button', { name: 'Spara träning', exact: true })).toBeDisabled();
@@ -170,11 +170,11 @@ test('borttagning kräver meny och bekräftelse, Delete tar inte bort', async ({
   await page.getByRole('button',{name:'Alternativ för ett.md',exact:true}).click();await page.getByRole('button',{name:'Ta bort fil',exact:true}).click();await page.locator('dialog').getByRole('button',{name:'Ta bort fil',exact:true}).click();await expect(page.locator('dialog')).toHaveCount(0);expect(writes.find(w=>w.path==='/git/trees').body.tree[0]).toMatchObject({path:'ovningar/ett.md',sha:null});expect(writes.some(w=>w.path==='/git/blobs')).toBe(false);
 });
 test('mobilens sidopanel kan svepas fram och tillbaka utan att byta fil', async ({page}) => {
-  await page.setViewportSize({width:390,height:844});await expect(page.getByRole('button',{name:'☰ Filer',exact:true})).toBeVisible();
-  await page.locator('.workspace').evaluate(element=>{const touch=window.testTouch({identifier:1,target:element,clientX:8,clientY:250});element.dispatchEvent(window.testTouchEvent('touchstart',{touches:[touch],bubbles:true}));const end=window.testTouch({identifier:1,target:element,clientX:180,clientY:255});element.dispatchEvent(window.testTouchEvent('touchmove',{touches:[end],bubbles:true,cancelable:true}));element.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[end],bubbles:true}));});await expect(page.locator('.workspace')).toHaveClass(/library-open/);await page.locator('[data-path="ovningar/ett.md"]').click();await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await expect(page.locator('.tiptap')).toContainText('Övning ett');await page.getByRole('button',{name:'☰ Filer',exact:true}).click();await page.locator('.sidebar').evaluate(element=>{const start=window.testTouch({identifier:1,target:element,clientX:320,clientY:250});element.dispatchEvent(window.testTouchEvent('touchstart',{touches:[start],bubbles:true}));const end=window.testTouch({identifier:1,target:element,clientX:250,clientY:255});element.dispatchEvent(window.testTouchEvent('touchmove',{touches:[end],bubbles:true,cancelable:true}));element.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[end],bubbles:true}));});await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await expect(page.locator('.tiptap')).toContainText('Övning ett');
+  await page.setViewportSize({width:390,height:844});await expect(page.getByRole('button',{name:'Filer',exact:true})).toBeVisible();
+  await page.locator('.workspace').evaluate(element=>{const touch=window.testTouch({identifier:1,target:element,clientX:8,clientY:250});element.dispatchEvent(window.testTouchEvent('touchstart',{touches:[touch],bubbles:true}));const end=window.testTouch({identifier:1,target:element,clientX:180,clientY:255});element.dispatchEvent(window.testTouchEvent('touchmove',{touches:[end],bubbles:true,cancelable:true}));element.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[end],bubbles:true}));});await expect(page.locator('.workspace')).toHaveClass(/library-open/);await page.locator('[data-path="ovningar/ett.md"]').click();await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await expect(page.locator('.tiptap')).toContainText('Övning ett');await page.getByRole('button',{name:'Filer',exact:true}).click();await page.locator('.sidebar').evaluate(element=>{const start=window.testTouch({identifier:1,target:element,clientX:320,clientY:250});element.dispatchEvent(window.testTouchEvent('touchstart',{touches:[start],bubbles:true}));const end=window.testTouch({identifier:1,target:element,clientX:250,clientY:255});element.dispatchEvent(window.testTouchEvent('touchmove',{touches:[end],bubbles:true,cancelable:true}));element.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[end],bubbles:true}));});await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await expect(page.locator('.tiptap')).toContainText('Övning ett');
 });
 test('långtryck öppnar filmenyn på telefon', async ({page}) => {
-  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'☰ Filer',exact:true}).click();const row=page.locator('[data-file-row="ovningar/ett.md"]');await row.dispatchEvent('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});await expect(page.locator('dialog').getByRole('button',{name:'Ta bort fil',exact:true})).toBeVisible();await row.dispatchEvent('pointerup',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});expect(writes).toHaveLength(0);
+  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Filer',exact:true}).click();const row=page.locator('[data-file-row="ovningar/ett.md"]');await row.dispatchEvent('pointerdown',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});await expect(page.locator('dialog').getByRole('button',{name:'Ta bort fil',exact:true})).toBeVisible();await row.dispatchEvent('pointerup',{pointerType:'touch',pointerId:1,clientX:100,clientY:200});expect(writes).toHaveLength(0);
 });
 
 test('namn och inloggning återställs direkt efter omladdning', async ({page}) => {
@@ -214,7 +214,7 @@ test('kantdrag följer fingret, kort drag öppnar och mitten påverkar inte meny
   await gesture(160,300);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);
   await gesture(8,40,false);const during=await page.locator('.sidebar').boundingBox();expect(during.x).toBeLessThan(0);expect(during.x+during.width).toBeGreaterThan(20);
   await page.locator('.workspace').evaluate(el=>el.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[window.testTouch({identifier:1,target:el,clientX:40,clientY:240})],bubbles:true})));await expect(page.locator('.workspace')).toHaveClass(/library-open/);
-  await gesture(160,60);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await page.getByRole('button',{name:'☰ Filer',exact:true}).click();await gesture(320,285);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);
+  await gesture(160,60);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);await page.getByRole('button',{name:'Filer',exact:true}).click();await gesture(320,285);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);
 });
 test('bilden kan zoomas och panoreras med mus och två fingrar',async({page})=>{
   await addTestPicture(page);const viewport=page.locator('.zoom-viewport'),picture=viewport.locator('img');const box=await viewport.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.wheel(0,-600);await expect(viewport).toHaveAttribute('data-zoomed','true');const before=await picture.getAttribute('style');await page.mouse.down();await page.mouse.move(box.x+box.width/2+70,box.y+box.height/2+30);await page.mouse.up();expect(await picture.getAttribute('style')).not.toBe(before);await page.getByRole('button',{name:'Anpassa',exact:true}).click();await expect(viewport).toHaveAttribute('data-zoomed','false');
@@ -238,7 +238,7 @@ test('utloggning tömmer även den krypterade materialcachen',async({page})=>{
 
 test('vänsterdrag på en filknapp inne i menyn flyttar bara menyn',async({page,context,browserName})=>{
   test.skip(browserName !== 'chromium','Native touch injection uses Chromium CDP; engine-independent touch tests run on WebKit too.');
-  await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const image=page.locator('.zoom-viewport img');await page.getByRole('button',{name:'☰ Filer',exact:true}).click();const row=page.locator('[data-path="bilder/zoom.png"]');await expect(row).toBeVisible();
+  await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const image=page.locator('.zoom-viewport img');await page.getByRole('button',{name:'Filer',exact:true}).click();const row=page.locator('[data-path="bilder/zoom.png"]');await expect(row).toBeVisible();
   await expect.poll(async()=>Math.round((await page.locator('.sidebar').boundingBox()).x)).toBe(0);
   const box=await row.boundingBox(),x=box.x+Math.min(box.width-15,160),y=box.y+box.height/2;const before=await image.getAttribute('style');const client=await context.newCDPSession(page);
   await client.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y,id:1}]});await client.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-45,y,id:1}]});
@@ -246,11 +246,11 @@ test('vänsterdrag på en filknapp inne i menyn flyttar bara menyn',async({page,
   await client.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-100,y,id:1}]});await client.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);expect(await image.getAttribute('style')).toBe(before);await expect(page.locator('dialog')).toHaveCount(0);
 });
 test('bilden ignorerar även en gammal pekarfångst när menyn är öppen',async({page})=>{
-  await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const viewport=page.locator('.zoom-viewport'),image=viewport.locator('img');await viewport.dispatchEvent('pointerdown',{pointerType:'touch',pointerId:91,clientX:180,clientY:350});await page.getByRole('button',{name:'☰ Filer',exact:true}).click();const before=await image.getAttribute('style');await viewport.dispatchEvent('pointermove',{pointerType:'touch',pointerId:91,clientX:80,clientY:350});expect(await image.getAttribute('style')).toBe(before);await viewport.dispatchEvent('pointerup',{pointerType:'touch',pointerId:91,clientX:80,clientY:350});
+  await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const viewport=page.locator('.zoom-viewport'),image=viewport.locator('img');await viewport.dispatchEvent('pointerdown',{pointerType:'touch',pointerId:91,clientX:180,clientY:350});await page.getByRole('button',{name:'Filer',exact:true}).click();const before=await image.getAttribute('style');await viewport.dispatchEvent('pointermove',{pointerType:'touch',pointerId:91,clientX:80,clientY:350});expect(await image.getAttribute('style')).toBe(before);await viewport.dispatchEvent('pointerup',{pointerType:'touch',pointerId:91,clientX:80,clientY:350});
 });
 
 test('menyn följer vänsterdrag från en filrad medan bilden förblir stilla',async({page})=>{
-  await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const picture=page.locator('.zoom-viewport img');await page.getByRole('button',{name:'☰ Filer',exact:true}).click();await expect.poll(async()=>Math.round((await page.locator('.sidebar').boundingBox()).x)).toBe(0);
+  await addTestPicture(page);await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Zooma in',exact:true}).click();const picture=page.locator('.zoom-viewport img');await page.getByRole('button',{name:'Filer',exact:true}).click();await expect.poll(async()=>Math.round((await page.locator('.sidebar').boundingBox()).x)).toBe(0);
   const before=await picture.getAttribute('style'),button=page.locator('[data-path="bilder/zoom.png"]');await button.evaluate(el=>{const r=el.getBoundingClientRect(),touch=x=>window.testTouch({identifier:17,target:el,clientX:x,clientY:r.y+r.height/2});el.dispatchEvent(window.testTouchEvent('touchstart',{touches:[touch(170)],bubbles:true}));el.dispatchEvent(window.testTouchEvent('touchmove',{touches:[touch(120)],bubbles:true,cancelable:true}));});
   expect((await page.locator('.sidebar').boundingBox()).x).toBeLessThan(-20);expect(await picture.getAttribute('style')).toBe(before);await button.evaluate(el=>{const r=el.getBoundingClientRect();el.dispatchEvent(window.testTouchEvent('touchend',{changedTouches:[window.testTouch({identifier:17,target:el,clientX:120,clientY:r.y+r.height/2})],bubbles:true}));});await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);expect(await picture.getAttribute('style')).toBe(before);
 });
@@ -327,4 +327,32 @@ test('telefonens hörnhandtag följer fingret utan att flytta sidan',async({page
   await client.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+60,y:y+30,id:1}]});await client.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   await expect.poll(async()=>(await media.locator('.media-frame').boundingBox()).width).toBeGreaterThan(before.width+40);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&scrollX===0)).toBe(true);await expect(page.locator('.workspace')).not.toHaveClass(/library-open/);
+});
+
+test('redigeringsmenyn stannar på skärmen vid rullning och stora telefonknappar använder SVG',async({page})=>{
+  stored['dokument/start.md']='# Långt dokument\n\n'+Array(70).fill('En instruktion som går att läsa och redigera.').join('\n\n');
+  await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(page.locator('.tiptap h1')).toHaveText('Långt dokument');
+  for(const [width,height] of [[320,740],[390,844],[667,375],[1440,900]]){
+    await page.setViewportSize({width,height});
+    const toolbar=page.locator('#format-bar');await expect(toolbar).toBeVisible();const before=await toolbar.boundingBox();
+    await page.locator('.document-area').evaluate(el=>{el.scrollTop=el.scrollHeight;});
+    await page.locator('.tiptap p').last().click();await page.keyboard.press('End');await page.keyboard.type(' Test');
+    await page.evaluate(()=>{for(const s of ['.main','.workspace','#app'])document.querySelector(s).scrollTop=200;window.scrollTo(100,200);});
+    const after=await toolbar.boundingBox();expect(after.y).toBeCloseTo(before.y,0);expect(after.y).toBeGreaterThanOrEqual(0);expect(after.y+after.height).toBeLessThan(height);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&scrollY===0&&document.querySelector('.main').scrollTop===0)).toBe(true);
+    for(const button of await toolbar.locator('button').all()){
+      await expect(button.locator('svg')).toHaveCount(1);
+      if(width<=760){const box=await button.boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}
+    }
+    await expect(toolbar.locator('[data-format=bulletList],[data-format=orderedList]')).toHaveCount(0);
+  }
+  await page.setViewportSize({width:390,height:844});await expect.poll(async()=>{const b=await page.locator('.sidebar').boundingBox();return b.x+b.width;}).toBeLessThanOrEqual(1);await page.screenshot({path:'/tmp/basket-toolbar-phone.png'});
+});
+test('verktygsfältet följer telefonens synliga yta ovanför tangentbordet och listor startar automatiskt',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:440});Object.defineProperty(visualViewport,'offsetTop',{configurable:true,value:60});visualViewport.dispatchEvent(new Event('resize'));});
+  await expect.poll(()=>page.locator('#app').evaluate(el=>Math.round(el.getBoundingClientRect().height))).toBe(440);
+  const toolbar=await page.locator('#format-bar').boundingBox();expect(toolbar.y).toBeGreaterThanOrEqual(60);expect(toolbar.y+toolbar.height).toBeLessThan(500);
+  const editor=page.locator('.tiptap');await editor.click();await page.keyboard.press('Control+a');await page.keyboard.type('1. Första');await page.keyboard.press('Enter');await page.keyboard.type('Andra');await expect(editor.locator('ol li')).toHaveCount(2);
+  await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.press('Enter');await page.keyboard.type('- Första');await page.keyboard.press('Enter');await page.keyboard.type('Andra');await expect(editor.locator('ul li')).toHaveCount(2);
 });

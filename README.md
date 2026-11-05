@@ -90,3 +90,7 @@ Knappen **Infoga bild eller video**, inklistring och filsläpp bäddar in materi
 Videor får Spela/Pausa och ett sökreglage under klippet när de markeras. Reglaget pausar uppspelningen så att den valda positionen kan granskas. Uppspelning och spolning ändrar inte dokumentet. MP4, MOV och WebM accepteras; uppspelningen beror på webbläsarens stöd för klippets kodek. MP4 med H.264 fungerar brett. Klipp får vara högst 25 MB och hämtas vid val, med samma krypterade cache som andra filer.
 
 Storleksatta bilder och videor lagras som HTML-inslag i Markdown med relativa filreferenser, aldrig tillfälliga blob-adresser. Nya mediefiler och dokumentet sparas tillsammans.
+
+## Verktygsfält och telefonknappar
+
+Dokumentytan rullar separat från verktygsfältet. Omgivande paneler klipps med `overflow: clip` så att webbläsarens följning av textmarkören inte kan rulla bort menyn. `visualViewport` håller arbetsrummet i telefonens synliga yta när tangentbordet visas. Ikonerna använder samma lokala SVG-komponent, och telefonens ikonknappar har minst 44 × 44 pixlars tryckyta. Listknapparna är borttagna; `- ` och `1. ` startar fortfarande listor automatiskt.
