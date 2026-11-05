@@ -1,3 +1,4 @@
+import { mountEditorTools } from './editor-tools.js';
 import { icon } from './icons.js';
 import { trackWorkspaceViewport } from './workspace-viewport.js';
 import { Editor } from '@tiptap/core';
@@ -28,11 +29,14 @@ let api, files = [], active, editor, sheet, original = '', dirty = false, busy =
 let planTitle = '', planNotes = '', clipboardCache = null, recents = [], selectedFolder = '', planDirty = false;
 let imageView = null;
 let stopViewportTracking = null;
+let editorTools=null;
+function setFocusMode(active){document.body.classList.toggle('editing-focus',active);editorTools?.setFocus(active);}
+function finishEditing(){editor?.commands.blur();setFocusMode(false);}
 let openController = null, opening = false, suppressFileClickUntil = 0;
 const fileImageUrls = new Map();
 const objectUrls = new Set();
 function blobUrl(bytes, type) { const url = URL.createObjectURL(new Blob([bytes], { type })); objectUrls.add(url); return url; }
-function clearPrivate() { stopViewportTracking?.();stopViewportTracking=null; imageView?.destroy(); imageView=null; document.body.classList.remove('workspace-open'); openController?.abort(); openController = null; opening = false; fileImageUrls.clear(); displayName = ''; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; api = null; files = []; active = null; cache.clear(); plan = []; pendingImages.clear(); imageUrls.clear(); objectUrls.forEach(URL.revokeObjectURL); objectUrls.clear(); dirty = false; original = ''; planTitle = ''; planNotes = ''; query = ''; filter = 'all'; clipboardCache = null; recents = []; selectedFolder = ''; planDirty = false; openVersion++; }
+function clearPrivate() { setFocusMode(false);editorTools?.destroy();editorTools=null; stopViewportTracking?.();stopViewportTracking=null; imageView?.destroy(); imageView=null; document.body.classList.remove('workspace-open'); openController?.abort(); openController = null; opening = false; fileImageUrls.clear(); displayName = ''; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; api = null; files = []; active = null; cache.clear(); plan = []; pendingImages.clear(); imageUrls.clear(); objectUrls.forEach(URL.revokeObjectURL); objectUrls.clear(); dirty = false; original = ''; planTitle = ''; planNotes = ''; query = ''; filter = 'all'; clipboardCache = null; recents = []; selectedFolder = ''; planDirty = false; openVersion++; }
 function notice(message, error = false) { const node = $('#notice'); node.textContent = message; node.className = `notice ${error ? 'error' : ''}`; node.hidden = false; clearTimeout(notice.timer); notice.timer = setTimeout(() => { node.hidden = true; }, error ? 12000 : 5500); }
 function dialog(title, content, setup) {
   const node = document.createElement('dialog'); node.innerHTML = `<div class="dialog-head"><h2>${esc(title)}</h2><button type="button" class="icon-button close" aria-label="Stäng">${icon('close')}</button></div>${content}`;
@@ -82,6 +86,7 @@ function workspace() {
   document.querySelectorAll('[data-format]').forEach(button => { button.onmousedown = e => e.preventDefault(); button.onclick = () => { const action = { bold: 'toggleBold', italic: 'toggleItalic', underline: 'toggleUnderline', undo: 'undo', redo: 'redo' }[button.dataset.format]; editor.chain().focus()[action]().run(); }; });
   $('#link').onclick = addLink; $('#image').onclick = () => $('#image-input').click();
   $('#image-input').onchange = e => { [...e.target.files].forEach(file => addAttachment(file)); e.target.value = ''; };
+  editorTools?.destroy();editorTools=mountEditorTools($('#format-bar'),finishEditing);
   renderTree(); renderPlan(); setupTreeTransfers(); setupFileMenus();
 }
 function folderLabel(path) { const leaf = path.split('/').pop(); return ({ ovningar: 'Övningar', dokument: 'Dokument', traningar: 'Träningar', bilder: 'Bilder', filmer: 'Filmer', 'Kom-igang': 'Kom igång' })[leaf] || leaf.replace(/-/g, ' '); }
@@ -140,6 +145,7 @@ function documentMedia(documentPath){return createMediaExtensions({getSource:src
 function loadingView(name) { return `<div class="file-loading" role="status"><span class="loading-spinner" aria-hidden="true"></span><span>Öppnar ${esc(name)}…</span></div>`; }
 async function openFile(file, force = false) {
   if (!file || busy || (!force && !confirmLeave())) return;
+  setFocusMode(false);
   openController?.abort();
   const controller = new AbortController(); openController = controller;
   const { signal } = controller, version = ++openVersion;
@@ -199,7 +205,7 @@ function mountEditor(content) {
     event.preventDefault();
     const paragraphs = plain.split(/\r?\n/).map(line => view.state.schema.nodes.paragraph.create(null, line ? view.state.schema.text(line) : null));
     view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(paragraphs), 0, 0)).scrollIntoView()); return true;
-  }, handleDrop: (_view, event) => { const dropped = [...(event.dataTransfer?.files || [])]; if (!dropped.length) return false; event.preventDefault(); const position = _view.posAtCoords({ left: event.clientX, top: event.clientY }); if (position) editor.commands.setTextSelection(position.pos); dropped.forEach(addAttachment); return true; } }, onUpdate: () => { dirty = editor.getMarkdown() !== original || !active.sha; updateStatus(); }, onSelectionUpdate: updateToolbar });
+  }, handleDrop: (_view, event) => { const dropped = [...(event.dataTransfer?.files || [])]; if (!dropped.length) return false; event.preventDefault(); const position = _view.posAtCoords({ left: event.clientX, top: event.clientY }); if (position) editor.commands.setTextSelection(position.pos); dropped.forEach(addAttachment); return true; } }, onFocus:()=>setFocusMode(true), onUpdate: () => { dirty = editor.getMarkdown() !== original || !active.sha; updateStatus(); }, onSelectionUpdate: updateToolbar });
   // Normalize the trailing paragraph before recording the clean baseline.
   const initialDirty=dirty;editor.view.dispatch(editor.state.tr.setMeta('addToHistory',false));
   original = editor.getMarkdown();dirty=initialDirty;updateToolbar();
@@ -268,7 +274,7 @@ function newDocument() {
     };
   });
 }
-function resetDocument() { imageView?.destroy();imageView=null; openController?.abort(); openVersion++; opening = false; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; active = null; dirty = false; pendingImages.clear(); $('#format-bar').hidden = true; $('#doc-bar').innerHTML = '<span>Välj ett dokument i biblioteket</span>'; $('#document-area').innerHTML = '<div class="empty"><h2>Välj ett dokument till vänster.</h2></div>'; updateStatus(); }
+function resetDocument() { setFocusMode(false); imageView?.destroy();imageView=null; openController?.abort(); openVersion++; opening = false; sheet?.destroy(); sheet = null; editor?.destroy(); editor = null; active = null; dirty = false; pendingImages.clear(); $('#format-bar').hidden = true; $('#doc-bar').innerHTML = '<span>Välj ett dokument i biblioteket</span>'; $('#document-area').innerHTML = '<div class="empty"><h2>Välj ett dokument till vänster.</h2></div>'; updateStatus(); }
 async function saveDocument() {
   if (sheet) { const target = active.path; const changes = [{ path: target, bytes: await sheet.getBytes(), baseSha: active.sha }]; commitDialog(changes, async () => { dirty = false; await reload(target); }); return; }
   const content = editor.getMarkdown(); const changes = [{ path: active.path, bytes: utf8.encode(content), baseSha: active.sha }];
@@ -487,6 +493,7 @@ function colorPalette() {
 }
 
 function setLibraryOpen(open) {
+  if(open)finishEditing();
   if (!$('.workspace')) return;
   if (matchMedia('(orientation:landscape)').matches) open=false;
   delete $('.workspace').dataset.gestureOwner;

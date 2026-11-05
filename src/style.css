@@ -62,3 +62,25 @@ body.workspace-open{top:var(--workspace-top,0px);bottom:auto;height:var(--worksp
   .document-video-controls>button{min-height:44px}
 }
 .workspace-open .mobile-files{z-index:9}
+/* Editing uses one compact row; additional tools live in the dropdown. */
+.workspace-open .format-bar{display:flex;flex-wrap:nowrap;align-items:center;gap:4px;padding:6px 10px;min-height:57px;overflow:visible;z-index:10}
+.workspace-open .format-bar button{flex:0 0 44px;min-width:44px;width:44px;height:44px;padding:9px}
+.workspace-open .format-bar button svg{width:24px;height:24px}
+.recent-tools{display:flex;gap:4px;flex:1;min-width:0}
+.recent-tools .tool-caption{display:none}
+#more-tools-button{margin-left:auto}
+.tools-dropdown{position:absolute;right:8px;top:calc(100% + 4px);width:min(290px,calc(100% - 16px));max-height:min(430px,calc(var(--workspace-height,100dvh) - 90px));overflow:auto;overscroll-behavior:contain;padding:10px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 35px #0003;display:flex;flex-direction:column;gap:4px}
+.workspace-open .tools-dropdown button{width:100%;flex:0 0 44px;justify-content:flex-start;gap:12px;padding:9px 12px}
+.tools-dropdown label{padding:5px 10px 10px}
+.workspace-open .tools-dropdown select{display:block;width:100%;height:44px;font-size:16px;padding:8px}
+.tool-caption{font-size:14px}
+body.editing-focus{--header-height:0px}
+.editing-focus .topbar,.editing-focus .document-footer{display:none!important}
+.editing-focus #finish-editing{background:#e8eaf5;color:#343b6b}
+@media(max-width:760px),(pointer:coarse){
+  .editing-focus .doc-bar,.editing-focus #mobile-files,.editing-focus .planner{display:none!important}
+  .editing-focus .document-area{padding:4px 8px}
+  .editing-focus .paper{padding:18px 14px;border:0;border-radius:0}
+  .editing-focus .sidebar{top:var(--workspace-top,0px)}
+}
+@media(prefers-color-scheme:dark){.tools-dropdown{background:#202024}.editing-focus #finish-editing{background:#303449;color:#e1e5ff}}

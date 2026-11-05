@@ -8,6 +8,9 @@ import ExcelJS from 'exceljs/dist/exceljs.min.js';
 const shaFor = content => createHash('sha1').update(content).digest('hex');
 const contents = { 'dokument/schema.csv': 'Namn;Tid\r\nPassningar;10\r\nSkott;15', 'dokument/start.md': '# Välkommen\n\nDet här är materialet.', 'ovningar/ett.md': '# Övning ett\n\nTräna passningar.', 'ovningar/tva.md': '# Övning två\n\nTräna rörelse.', 'ovningar/tre.md': '# Övning tre\n\nTräna skott.', 'ovningar/fyra.md': '# Övning fyra\n\nTräna tillsammans.' };
 let writes, stored;
+async function clickTool(page,name){const button=page.getByRole('button',{name,exact:true});if(!await button.isVisible())await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await button.click();}
+async function selectTextType(page,value){if(!await page.getByLabel('Texttyp',{exact:true}).isVisible())await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await page.getByLabel('Texttyp',{exact:true}).selectOption(value);}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(()=>{window.testTouch=attrs=>({...attrs});window.testTouchEvent=(type,init={})=>{const event=new Event(type,init);Object.defineProperties(event,{touches:{value:init.touches||[]},changedTouches:{value:init.changedTouches||[]}});return event;};});
   writes = []; stored = { ...contents }; page.on('pageerror', error => console.log('PAGE ERROR', error.message));
@@ -30,8 +33,8 @@ test('en skrivyta, rubriker, formatering och ångra/gör om', async ({ page }) =
   const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('En ny rad');
   await page.keyboard.press('Control+z'); await expect(editor).not.toContainText('En ny rad');
   await page.keyboard.press('Control+y'); await expect(editor).toContainText('En ny rad');
-  await page.getByLabel('Texttyp').selectOption('2'); await expect(editor.locator('h2')).toContainText('En ny rad');
-  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.getByLabel('Texttyp').selectOption('0');
+  await selectTextType(page,'2'); await expect(editor.locator('h2')).toContainText('En ny rad');
+  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await selectTextType(page,'0');
   await page.keyboard.type('- text'); await page.keyboard.press('Enter'); await page.keyboard.type('nästa punkt'); await expect(editor.locator('ul li')).toHaveCount(2);
   await page.getByRole('button', { name: 'Spara ändringar', exact: true }).click();
   await page.getByLabel('Vad har du ändrat?').fill('Förtydligar materialet'); await page.locator('dialog').getByRole('button', { name: 'Spara ändringar', exact: true }).click();
@@ -52,10 +55,10 @@ test('bilder från urklipp och droppade bilagor sparas i samma commit', async ({
   const tree = writes.find(w => w.path === '/git/trees').body.tree; expect(tree).toHaveLength(3); expect(tree.some(e => e.path.startsWith('bilder/'))).toBe(true); expect(tree.some(e => e.path.startsWith('bilagor/'))).toBe(true);
 });
 test('intern kopiering behåller formatering, annat dokument får vanlig text', async ({ page }) => {
-  const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+a'); await page.keyboard.type('Formaterad text'); await page.keyboard.press('Control+a'); await page.getByRole('button', { name: 'Fetstil', exact: true }).click();
+  const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+a'); await page.keyboard.type('Formaterad text'); await page.keyboard.press('Control+a'); await clickTool(page,'Fetstil');
   const clipboard = await editor.evaluate(element => { const data = new DataTransfer(); element.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true })); return { plain: data.getData('text/plain'), id: data.getData('application/x-knivsta-selection'), html: data.getData('text/html') }; });
   expect(clipboard.plain).toBe('Formaterad text'); expect(clipboard.id).toBeTruthy(); expect(clipboard.html).toBe('');
-  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.getByRole('button', { name: 'Fetstil', exact: true }).click();
+  await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await clickTool(page,'Fetstil');
   const paste = async () => editor.evaluate((element, clipboard) => { const data = new DataTransfer(); data.setData('text/plain', clipboard.plain); data.setData('application/x-knivsta-selection', clipboard.id); element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })); }, clipboard);
   await paste(); await expect(editor.locator('strong')).toHaveCount(2);
   page.once('dialog', dialog => dialog.accept()); await page.locator('[data-path="ovningar/ett.md"]').click(); await expect(editor).toContainText('Övning ett'); await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await paste();
@@ -97,7 +100,7 @@ test('mapp kan laddas ner som zip', async ({ page }) => {
 });
 test('understrykning, kursiv och rubriknivå bevaras i Markdown', async ({ page }) => {
   const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+a'); await page.keyboard.type('Viktig text'); await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: 'Understruken', exact: true }).click(); await page.getByRole('button', { name: 'Kursiv', exact: true }).click(); await page.getByLabel('Texttyp').selectOption('3');
+  await clickTool(page,'Understruken'); await clickTool(page,'Kursiv'); await selectTextType(page,'3');
   await expect(editor.locator('h3 u em, h3 em u')).toContainText('Viktig text');
   await page.getByRole('button', { name: 'Spara ändringar', exact: true }).click(); await page.getByLabel('Vad har du ändrat?').fill('Förtydligar rubriken'); await page.locator('dialog').getByRole('button', { name: 'Spara ändringar', exact: true }).click(); await expect(page.locator('dialog')).toHaveCount(0);
   const md = Buffer.from(writes.find(w => w.path === '/git/blobs').body.content, 'base64').toString('utf8'); expect(md).toContain('### '); expect(md).toContain('<u>'); expect(md).toContain('*');
@@ -105,7 +108,7 @@ test('understrykning, kursiv och rubriknivå bevaras i Markdown', async ({ page 
 
 test('färgad text sparas och kan läsas igen i mörkt och ljust tema', async ({ page }) => {
   const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+a'); await page.keyboard.type('Färgad text'); await page.keyboard.press('Control+a');
-  await page.getByRole('button', { name: 'Textfärg', exact: true }).click(); await page.getByRole('button', { name: 'Blå', exact: true }).click();
+  await clickTool(page,'Textfärg'); await page.getByRole('button', { name: 'Blå', exact: true }).click();
   await expect(editor.locator('span[style]')).toHaveCSS('color', 'rgb(57, 123, 184)');
   await page.getByRole('button', { name: 'Spara ändringar', exact: true }).click(); await page.getByLabel('Vad har du ändrat?').fill('Markerar fokus med blått'); await page.locator('dialog').getByRole('button', { name: 'Spara ändringar', exact: true }).click(); await expect(page.locator('dialog')).toHaveCount(0);
   const markdown = Buffer.from(writes.find(w => w.path === '/git/blobs').body.content, 'base64').toString('utf8'); expect(markdown).toContain('<span style="color: #397bb8">');
@@ -277,8 +280,8 @@ test('bildens fyra hörnhandtag ändrar storlek och storleken överlever sparnin
   const media=page.locator('.tiptap .document-image');await expect(media.locator('img')).toBeVisible();
   const before=await media.locator('.media-frame').boundingBox();await resizeMedia(page,media);
   const after=await media.locator('.media-frame').boundingBox();expect(after.width).toBeLessThan(before.width-50);expect(after.width/after.height).toBeCloseTo(1.5,1);
-  await page.getByRole('button',{name:'Ångra',exact:true}).click();await expect.poll(async()=>Math.round((await media.locator('.media-frame').boundingBox()).width)).toBe(Math.round(before.width));
-  await page.getByRole('button',{name:'Gör om',exact:true}).click();
+  await clickTool(page,'Ångra');await expect.poll(async()=>Math.round((await media.locator('.media-frame').boundingBox()).width)).toBe(Math.round(before.width));
+  await clickTool(page,'Gör om');
   const markdown=await saveMediaDocument(page);expect(markdown).toMatch(/<img src="\.\.\/bilder\/[^" ]+" alt="bild.png" width="\d+" height="\d+">/);expect(markdown).not.toContain('blob:');
   await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(media.locator('img')).toBeVisible();
   await expect.poll(async()=>Math.round((await media.locator('.media-frame').boundingBox()).width)).toBe(Math.round(after.width));
@@ -334,13 +337,13 @@ test('redigeringsmenyn stannar på skärmen vid rullning och stora telefonknappa
   await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(page.locator('.tiptap h1')).toHaveText('Långt dokument');
   for(const [width,height] of [[320,740],[390,844],[667,375],[1440,900]]){
     await page.setViewportSize({width,height});
-    const toolbar=page.locator('#format-bar');await expect(toolbar).toBeVisible();const before=await toolbar.boundingBox();
+    const toolbar=page.locator('#format-bar');await expect(toolbar).toBeVisible();await page.locator('.tiptap').focus();const before=await toolbar.boundingBox();
     await page.locator('.document-area').evaluate(el=>{el.scrollTop=el.scrollHeight;});
     await page.locator('.tiptap p').last().click();await page.keyboard.press('End');await page.keyboard.type(' Test');
     await page.evaluate(()=>{for(const s of ['.main','.workspace','#app'])document.querySelector(s).scrollTop=200;window.scrollTo(100,200);});
     const after=await toolbar.boundingBox();expect(after.y).toBeCloseTo(before.y,0);expect(after.y).toBeGreaterThanOrEqual(0);expect(after.y+after.height).toBeLessThan(height);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&scrollY===0&&document.querySelector('.main').scrollTop===0)).toBe(true);
-    for(const button of await toolbar.locator('button').all()){
+    for(const button of await toolbar.locator('button:visible').all()){
       await expect(button.locator('svg')).toHaveCount(1);
       if(width<=760){const box=await button.boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}
     }
@@ -355,4 +358,25 @@ test('verktygsfältet följer telefonens synliga yta ovanför tangentbordet och 
   const toolbar=await page.locator('#format-bar').boundingBox();expect(toolbar.y).toBeGreaterThanOrEqual(60);expect(toolbar.y+toolbar.height).toBeLessThan(500);
   const editor=page.locator('.tiptap');await editor.click();await page.keyboard.press('Control+a');await page.keyboard.type('1. Första');await page.keyboard.press('Enter');await page.keyboard.type('Andra');await expect(editor.locator('ol li')).toHaveCount(2);
   await page.keyboard.press('Control+End');await page.keyboard.press('Enter');await page.keyboard.press('Enter');await page.keyboard.type('- Första');await page.keyboard.press('Enter');await page.keyboard.type('Andra');await expect(editor.locator('ul li')).toHaveCount(2);
+});
+
+test('telefonens fokusläge frigör skrivytan och håller senaste verktygen på en rad',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await page.locator('.tiptap').click();
+  await expect(page.locator('body')).toHaveClass(/editing-focus/);await expect(page.locator('.topbar')).toBeHidden();await expect(page.locator('#doc-bar')).toBeHidden();await expect(page.locator('#mobile-files')).toBeHidden();
+  for(const width of [320,390]){
+    await page.setViewportSize({width,height:844});
+    await page.evaluate(()=>{Object.defineProperty(visualViewport,'height',{configurable:true,value:380});visualViewport.dispatchEvent(new Event('resize'));});
+    const toolbar=await page.locator('#format-bar').boundingBox();expect(toolbar.height).toBeLessThanOrEqual(60);
+    for(const button of await page.locator('#format-bar button:visible').all()){const box=await button.boundingBox();expect(box.y).toBeCloseTo(toolbar.y+6,0);expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);expect(box.width).toBeGreaterThanOrEqual(44);}
+    const area=await page.locator('.document-area').boundingBox();expect(area.height).toBeGreaterThan(300);
+  }
+  const editor=page.locator('.tiptap');await editor.locator('p').first().click();await page.keyboard.type('Tydligare instruktion');
+  await editor.locator('p').first().evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);document.dispatchEvent(new Event('selectionchange'));});
+  await expect.poll(()=>page.evaluate(()=>getSelection().toString())).toContain('Tydligare instruktion');
+  await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await expect(page.locator('#more-tools')).toBeVisible();
+  await page.getByRole('button',{name:'Understruken',exact:true}).click();await expect(editor.locator('u')).toContainText('Tydligare instruktion');await expect(page.locator('#more-tools')).toBeHidden();await expect(page.locator('.recent-tools [data-tool=underline]')).toBeVisible();
+  await page.getByRole('button',{name:'Fler verktyg',exact:true}).click();await page.getByLabel('Texttyp',{exact:true}).selectOption('2');await expect(editor.locator('h2')).toContainText('Tydligare instruktion');await expect(page.locator('#more-tools')).toBeHidden();
+  await page.screenshot({path:'/tmp/basket-focus-phone.png',clip:{x:0,y:0,width:390,height:380}});
+  await page.getByRole('button',{name:'Avsluta fokusläge',exact:true}).click();await expect(page.locator('.topbar')).toBeVisible();await expect(page.locator('#doc-bar')).toBeVisible();await expect(page.locator('body')).not.toHaveClass(/editing-focus/);
+  await page.getByRole('button',{name:'Spara ändringar',exact:true}).click();await expect(page.getByLabel('Vad har du ändrat?')).toBeVisible();
 });

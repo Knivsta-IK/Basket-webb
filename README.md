@@ -94,3 +94,5 @@ Storleksatta bilder och videor lagras som HTML-inslag i Markdown med relativa fi
 ## Verktygsfält och telefonknappar
 
 Dokumentytan rullar separat från verktygsfältet. Omgivande paneler klipps med `overflow: clip` så att webbläsarens följning av textmarkören inte kan rulla bort menyn. `visualViewport` håller arbetsrummet i telefonens synliga yta när tangentbordet visas. Ikonerna använder samma lokala SVG-komponent, och telefonens ikonknappar har minst 44 × 44 pixlars tryckyta. Listknapparna är borttagna; `- ` och `1. ` startar fortfarande listor automatiskt.
+
+När skrivytan får fokus startar fokusläge. På telefon döljs sidhuvud, dokumentrad och statusrad tills bocken **Klar** väljs. Verktygsfältet ligger alltid på en rad och visar upp till fyra nyligen använda verktyg; övriga verktyg och texttyp finns under **Fler verktyg**. Antalet synliga verktyg anpassas efter skrivytans faktiska bredd. Val från menyn flyttas upp till raden utan att textmarkeringen går förlorad.
