@@ -49,6 +49,49 @@ test('direktlänk öppnar Excel med sparad session och efter inloggning', async 
   await expect(page.getByRole('grid')).toContainText('svenviktorjonsson@gmail.com');
 });
 
+test('Dela använder aktuell fils direktlänk i telefonens delningsmeny', async ({ page }) => {
+  await page.goto('/?file=dokument%2Fstart.md&keyboard-debug=1#test');
+  await expect(page.locator('.tiptap')).toBeVisible();
+  await page.locator('[data-path="dokument/schema.csv"]').click();
+  await expect(page.getByRole('grid')).toBeVisible();
+  await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async data=>{window.sharedDocument=data;}}));
+  await page.getByRole('button',{name:'Dela',exact:true}).click();
+  const shared=await page.evaluate(()=>window.sharedDocument);
+  expect(shared.title).toBe('schema');
+  expect(new URL(shared.url).searchParams.get('file')).toBe('dokument/schema.csv');
+  expect([...new URL(shared.url).searchParams.keys()]).toEqual(['file']);
+  expect(new URL(shared.url).hash).toBe('');
+  expect(new URL(shared.url).origin).toBe(new URL(page.url()).origin);
+});
+
+test('Dela erbjuder WhatsApp och kopiering utan inbyggd delningsmeny', async ({ page }) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{
+    Object.defineProperty(navigator,'share',{configurable:true,value:undefined});
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{async writeText(value){window.copiedShare=value;}}});
+  });
+  await page.getByRole('button',{name:'Dela',exact:true}).click();
+  const link=await page.getByLabel('Direktlänk',{exact:true}).inputValue();
+  expect(new URL(link).searchParams.get('file')).toBe('dokument/start.md');
+  const whatsapp=new URL(await page.getByRole('link',{name:'Dela på WhatsApp'}).getAttribute('href'));
+  expect(whatsapp.hostname).toBe('wa.me');
+  expect(whatsapp.searchParams.get('text')).toContain(link);
+  await page.getByRole('button',{name:'Kopiera länk',exact:true}).click();
+  await expect(page.locator('#share-status')).toHaveText('Länken är kopierad.');
+  expect(await page.evaluate(()=>window.copiedShare)).toBe(link);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined}));
+  await page.getByRole('button',{name:'Kopiera länk',exact:true}).click();
+  await expect(page.locator('#share-status')).toContainText('Kopiera den markerade länken');
+});
+
+test('avbruten delning öppnar inte någon extra dialog', async ({ page }) => {
+  await page.evaluate(()=>Object.defineProperty(navigator,'share',{configurable:true,value:async()=>{throw new DOMException('Avbruten','AbortError');}}));
+  await page.getByRole('button',{name:'Dela',exact:true}).click();
+  await expect(page.locator('dialog')).toHaveCount(0);
+  await expect(page.locator('.tiptap')).toBeVisible();
+});
+
 test('en skrivyta, rubriker, formatering och ångra/gör om', async ({ page }) => {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('En ny rad');

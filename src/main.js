@@ -240,9 +240,29 @@ function renderDocBar() {
   const selectedFile = active;
   $('#doc-bar').innerHTML = `<div class="breadcrumb">${icon('file')}<span>${esc(active.path.split('/').slice(0, -1).map(folderLabel).join(' / ') || 'Material')}</span><span>/</span><strong>${esc(titleOf(active.path))}</strong></div><div class="doc-actions">${isExercise(active.path) ? `<button id="add-plan" class="secondary">${icon('plus')} Till träning</button>` : ''}<button id="active-file-menu" class="icon-button" aria-label="Filalternativ">${icon('more')}</button><button id="download-doc" class="icon-button" aria-label="Ladda ner dokument" title="Ladda ner dokument">${icon('download')}</button>${editablePath(active.path) ? '<button id="save-doc" class="primary compact" disabled>Spara ändringar</button>' : ''}</div>`;
   $('#active-file-menu').onclick = () => fileMenu(selectedFile);
+  const shareButton=document.createElement('button');
+  shareButton.id='share-doc';shareButton.className='secondary';shareButton.innerHTML=`${icon('share')} Dela`;
+  shareButton.disabled=!selectedFile.sha;shareButton.title=selectedFile.sha?'Dela direktlänk till dokumentet':'Spara dokumentet innan du delar det';
+  shareButton.onclick=()=>shareDocument(selectedFile);
+  $('#download-doc').before(shareButton);
   if ($('#add-plan')) $('#add-plan').onclick = addToPlan;
   $('#download-doc').onclick = async () => { if (editor) download(utf8.encode(editor.getMarkdown()), active.path.split('/').pop()); else if (sheet) download(await sheet.getBytes(), active.path.split('/').pop()); else download(await bytesOf(selectedFile), selectedFile.path.split('/').pop()); };
   if ($('#save-doc')) $('#save-doc').onclick = saveDocument;
+}
+async function shareDocument(file){
+  const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('file',file.path);
+  const link=url.href,title=titleOf(file.path);
+  if(navigator.share){
+    try{await navigator.share({title,url:link});return;}
+    catch(error){if(error.name==='AbortError')return;}
+  }
+  dialog('Dela dokument',`<p>${esc(title)}</p><label for="share-url">Direktlänk</label><input id="share-url" type="text" readonly value="${esc(link)}"><div class="share-actions"><button id="copy-share-url" class="primary">Kopiera länk</button><a class="secondary" href="https://wa.me/?text=${encodeURIComponent(`${title}\n${link}`)}" target="_blank" rel="noopener noreferrer">Dela på WhatsApp</a></div><p id="share-status" role="status"></p>`,node=>{
+    const input=node.querySelector('#share-url');input.onclick=()=>input.select();
+    node.querySelector('#copy-share-url').onclick=async()=>{
+      try{await navigator.clipboard.writeText(link);node.querySelector('#share-status').textContent='Länken är kopierad.';}
+      catch{input.focus();input.select();node.querySelector('#share-status').textContent='Kopiera den markerade länken och klistra in den där du vill dela.';}
+    };
+  });
 }
 async function addImage(file) {
   if (!editor || busy) return;

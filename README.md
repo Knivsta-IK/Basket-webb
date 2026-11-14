@@ -8,6 +8,8 @@ En enkel gemensam skrivyta för föreningens dokument, övningar och träningspa
 
 Direktlänkar till filer använder `?file=` med filens sökväg, till exempel `https://knivsta-ik.github.io/Basket-webb/?file=dokument%2FKontaktlista-basket.xlsx`. Filen öppnas på webbplatsen efter eventuell inloggning. Vid direktlänk hämtas den aktuella fillistan så att även nytillagda filer kan öppnas.
 
+**Dela** finns på alla sparade filer och öppnar enhetens delningsmeny. Om webbläsaren saknar delningsmeny visas direktlänken med knappar för att kopiera eller dela på WhatsApp. Mottagaren öppnar filen på materialwebbplatsen med vanlig inloggning.
+
 Åtkomstnyckeln hålls i minnet under sessionen, aldrig i localStorage, sessionStorage, URL:er eller loggar. Namn och en icke-exporterbar CryptoKey sparas i IndexedDB på enheten, så att inloggningen kan återställas automatiskt efter omladdning och nya besök. Varken lösenord eller okrypterad åtkomstnyckel skrivs till disk. Den sparade upplåsningen ger enheten åtkomst tills användaren väljer Logga ut, webbplatsdata rensas, nyckeln slutar fungera eller åtkomstkonfigurationen byts. Logga ut tar bort den sparade upplåsningen och rensar arbetsytan. Tillfälliga nätverksfel behåller upplåsningen så att användaren kan försöka igen. Om webbläsaren inte tillåter lokal lagring fungerar vanlig inloggning och en förklaring visas. Varje sparning får det angivna namnet som author och committer, med en syntetisk adress under den reserverade domänen `material.invalid`. Namn är själv angivna och utgör inte verifierade identiteter. Alla med det delade lösenordet har samma läs- och skrivrättigheter; bakomliggande åtkomst och revisionslogg tillhör nyckelns ägare.
 
 ## Aktivera lösenordet
