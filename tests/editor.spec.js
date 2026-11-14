@@ -29,6 +29,26 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/access.json', async route => route.fulfill({json:await accessPromise}));
   await page.goto('/'); await page.getByLabel('Ditt namn', {exact:true}).fill('Anna Andersson'); await page.getByLabel('Lösenord', {exact:true}).fill('en testfras med fyra ord'); await page.getByRole('button', {name:'Öppna biblioteket'}).click(); await expect(page.locator('.tiptap')).toBeVisible();
 });
+test('direktlänk öppnar Excel med sparad session och efter inloggning', async ({ page }) => {
+  const book = new ExcelJS.Workbook();
+  book.addWorksheet('Kontaktlista').addRows([
+    ['Förnamn', 'Efternamn', 'E-postadress', 'Ledare', 'Grupp'],
+    ['Viktor', 'Jonsson', 'svenviktorjonsson@gmail.com', 'Ja', '2018–2020'],
+  ]);
+  stored['dokument/Kontaktlista-basket.xlsx'] = Buffer.from(await book.xlsx.writeBuffer());
+  // Filen är ny och finns ännu inte i den sparade bibliotekscachen.
+  await page.goto('/?file=dokument%2FKontaktlista-basket.xlsx');
+  await expect(page.getByRole('grid')).toContainText('svenviktorjonsson@gmail.com');
+  await expect(page.locator('#doc-bar')).toContainText('Kontaktlista basket');
+  await page.getByRole('button', { name: 'Logga ut' }).click();
+  await page.reload();
+  await page.getByLabel('Ditt namn', { exact: true }).fill('Viktor Jonsson');
+  await page.getByLabel('Lösenord', { exact: true }).fill('en testfras med fyra ord');
+  await page.getByRole('button', { name: 'Öppna biblioteket' }).click();
+  await expect(page.getByRole('grid')).toContainText('2018–2020');
+  await expect(page.getByRole('grid')).toContainText('svenviktorjonsson@gmail.com');
+});
+
 test('en skrivyta, rubriker, formatering och ångra/gör om', async ({ page }) => {
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const editor = page.locator('.tiptap'); await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.press('Enter'); await page.keyboard.type('En ny rad');

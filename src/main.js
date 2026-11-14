@@ -610,8 +610,11 @@ function setupFileMenus() {
 function persistLibrary(){if(api?.current)void writeLibraryCache({branch:api.branch,current:api.current,lastPath:active?.path||null});}
 async function enterWorkspace(client,result,name,lastPath=null){
   displayName=name;api=client;files=result;workspace();
-  const first=files.find(file=>file.path===lastPath)||files.find(file=>/Valkommen\.md$/.test(file.path))||files.find(file=>isMarkdown(file.path))||files[0];
+  const linkedPath=new URLSearchParams(location.search).get('file');
+  const linkedFile=files.find(file=>file.path===linkedPath);
+  const first=linkedFile||files.find(file=>file.path===lastPath)||files.find(file=>/Valkommen\.md$/.test(file.path))||files.find(file=>isMarkdown(file.path))||files[0];
   if(first)await openFile(first);else persistLibrary();
+  if(linkedPath&&!linkedFile)notice('Den länkade filen finns inte i biblioteket.',true);
 }
 async function syncSession(client,session,alreadyFresh=false){
   try{
@@ -625,7 +628,7 @@ async function start(){
   $('#app').innerHTML='<div class="restoring-login" role="status"><span class="loading-spinner" aria-hidden="true"></span>Öppnar materialet…</div>';
   try{
     const saved=await restoreSession();if(!saved){login();return;}
-    configureContentCache(saved);const client=new GitHub(saved.token,saved.name);const library=await readLibraryCache();
+    configureContentCache(saved);const client=new GitHub(saved.token,saved.name);const library=new URLSearchParams(location.search).has('file')?null:await readLibraryCache();
     if(library?.current?.files){client.branch=library.branch;client.current=library.current;await enterWorkspace(client,library.current.files,saved.name,library.lastPath);void syncSession(client,saved);}
     else{const result=await client.load();await enterWorkspace(client,result,saved.name);void syncSession(client,saved,true);}
   }catch(error){
