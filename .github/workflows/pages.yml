@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 concurrency:
@@ -13,21 +14,100 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 57 # Includes three minutes for post-job cleanup.
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Verify hosted run and numeric job identity
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+
+          def verify(run, listing, env):
+              assert env['RUNNER_ENVIRONMENT'] == 'github-hosted', 'Hosted runner required'
+              assert env['GITHUB_REPOSITORY'] == 'Knivsta-IK/Basket-webb'
+              assert env['GITHUB_JOB'] == 'deploy'
+              assert env['GITHUB_REF'] == 'refs/heads/main'
+              assert env['GITHUB_WORKFLOW_SHA'] == env['GITHUB_SHA']
+              assert env['GITHUB_WORKFLOW_REF'] == env['GITHUB_REPOSITORY'] + '/.github/workflows/pages.yml@refs/heads/main'
+              assert run['id'] == int(env['GITHUB_RUN_ID'])
+              assert run['run_attempt'] == int(env['GITHUB_RUN_ATTEMPT'])
+              assert run['head_sha'] == env['GITHUB_SHA'] and run['head_branch'] == 'main'
+              assert run['repository']['full_name'] == env['GITHUB_REPOSITORY']
+              assert run['path'] == '.github/workflows/pages.yml'
+              assert run['event'] == env['GITHUB_EVENT_NAME'] and run['status'] == 'in_progress'
+              assert listing['total_count'] <= 1, 'Unexpected jobs'
+              jobs = listing['jobs']
+              if not jobs:
+                  return None  # Actions metadata may briefly lag allocation.
+              assert len(jobs) == listing['total_count'] == 1
+              job = jobs[0]
+              assert job['run_id'] == run['id'] and job['run_attempt'] == run['run_attempt']
+              assert job['head_sha'] == run['head_sha'] and job['name'] == env['GITHUB_JOB']
+              assert type(job['id']) is int and job['id'] > 0
+              assert job['labels'] == ['ubuntu-latest']
+              if not job.get('runner_id') or not job.get('runner_name'):
+                  return None
+              assert job['runner_name'] == env['RUNNER_NAME']
+              assert job['runner_group_name'] == 'GitHub Actions' and job['runner_group_id'] == 0
+              assert type(job['runner_id']) is int and job['runner_id'] > 0
+              if job['status'] != 'in_progress':
+                  return None
+              return {key: job[key] for key in ('id', 'run_id', 'run_attempt', 'head_sha', 'runner_id', 'runner_name', 'runner_group_id', 'runner_group_name', 'labels')}
+
+          def main():
+              env = os.environ
+              assert env['RUNNER_ENVIRONMENT'] == 'github-hosted'
+              deadline = time.monotonic() + 110
+              root = env['GITHUB_API_URL'] + '/repos/' + env['GITHUB_REPOSITORY'] + '/actions/runs/' + env['GITHUB_RUN_ID']
+              def get(url):
+                  request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + env['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+                  with urllib.request.urlopen(request, timeout=min(10, max(0.1, deadline - time.monotonic()))) as response:
+                      return json.load(response)
+              while time.monotonic() < deadline:
+                  try:
+                      run = get(root)
+                      jobs = get(root + '/attempts/' + env['GITHUB_RUN_ATTEMPT'] + '/jobs?per_page=100')
+                      receipt = verify(run, jobs, env)
+                      if receipt:
+                          print('HOSTED_IDENTITY ' + json.dumps(receipt, sort_keys=True), flush=True)
+                          with open(env['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                              summary.write('Hosted identity: `' + json.dumps(receipt, sort_keys=True) + '`\n')
+                          return
+                  except urllib.error.HTTPError as error:
+                      if error.code not in (404, 502, 503, 504):
+                          raise
+                  except (TimeoutError, urllib.error.URLError):
+                      pass
+                  time.sleep(min(2, max(0, deadline - time.monotonic())))
+              raise RuntimeError('No exact hosted run/attempt/numeric job receipt within guard budget')
+
+          if __name__ == '__main__':
+              main()
+          PY
       - uses: actions/checkout@v4
+        timeout-minutes: 2
       - uses: actions/setup-node@v4
+        timeout-minutes: 3
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+        timeout-minutes: 15
       - run: npm test
+        timeout-minutes: 5
       - run: npm run build
+        timeout-minutes: 10
       - uses: actions/configure-pages@v5
+        timeout-minutes: 2
       - uses: actions/upload-pages-artifact@v3
+        timeout-minutes: 5
         with:
           path: dist
       - uses: actions/deploy-pages@v4
+        timeout-minutes: 10
         id: deployment
