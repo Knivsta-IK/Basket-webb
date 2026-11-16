@@ -648,8 +648,8 @@ async function start(){
   $('#app').innerHTML='<div class="restoring-login" role="status"><span class="loading-spinner" aria-hidden="true"></span>Öppnar materialet…</div>';
   try{
     const saved=await restoreSession();if(!saved){login();return;}
-    configureContentCache(saved);const client=new GitHub(saved.token,saved.name);const library=new URLSearchParams(location.search).has('file')?null:await readLibraryCache();
-    if(library?.current?.files){client.branch=library.branch;client.current=library.current;await enterWorkspace(client,library.current.files,saved.name,library.lastPath);void syncSession(client,saved);}
+    configureContentCache(saved);const client=new GitHub(saved.token,saved.name);const library=await readLibraryCache();const linkedPath=new URLSearchParams(location.search).get('file');
+    if(library?.current?.files&&(!linkedPath||library.current.files.some(file=>file.path===linkedPath))){client.branch=library.branch;client.current=library.current;await enterWorkspace(client,library.current.files,saved.name,library.lastPath);void syncSession(client,saved);}
     else{const result=await client.load();await enterWorkspace(client,result,saved.name);void syncSession(client,saved,true);}
   }catch(error){
     if([401,403,404].includes(error.status)){try{await forgetSession();await clearContentCache();}catch{}}
