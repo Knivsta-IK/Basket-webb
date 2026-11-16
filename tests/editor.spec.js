@@ -49,6 +49,28 @@ test('direktlänk öppnar Excel med sparad session och efter inloggning', async 
   await expect(page.getByRole('grid')).toContainText('svenviktorjonsson@gmail.com');
 });
 
+test('direktlänk öppnar sparad fil vid nätverksfel utan att tappa inloggningen', async ({ page }) => {
+  await page.locator('[data-path="ovningar/ett.md"]').click();
+  await expect(page.locator('.tiptap')).toContainText('Övning ett');
+  await page.locator('[data-path="dokument/start.md"]').click();
+  await expect(page.locator('.tiptap')).toContainText('Välkommen');
+  await expect.poll(() => page.evaluate(async () => (await (await import('/src/content-cache.js')).readLibraryCache())?.lastPath)).toBe('dokument/start.md');
+
+  const pattern = 'https://api.github.com/repos/Knivsta-IK/Basket**';
+  const offline = route => route.abort('failed');
+  await page.route(pattern, offline);
+  await page.goto('/?file=ovningar%2Fett.md');
+  await expect(page.locator('.tiptap')).toContainText('Övning ett');
+  await expect(page.locator('#notice')).toContainText('Visar sparat material');
+  await expect(page.locator('.user-name')).toHaveText('Anna Andersson');
+  await expect(page.locator('#password')).toHaveCount(0);
+
+  await page.unroute(pattern, offline);
+  await page.getByRole('button', { name: 'Hämta senaste materialet' }).click();
+  await expect(page.locator('#notice')).toContainText('Materialet är uppdaterat');
+  await expect(page.locator('.tiptap')).toContainText('Övning ett');
+});
+
 test('Dela använder aktuell fils direktlänk i telefonens delningsmeny', async ({ page }) => {
   await page.goto('/?file=dokument%2Fstart.md&keyboard-debug=1#test');
   await expect(page.locator('.tiptap')).toBeVisible();
@@ -253,14 +275,15 @@ test('namn och inloggning återställs direkt efter omladdning', async ({page}) 
 test('Logga ut tar bort den sparade inloggningen även efter omladdning', async ({page}) => {
   await page.getByRole('button',{name:'Logga ut'}).click();await expect(page.locator('#password')).toBeVisible();await page.reload();await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
 });
-test('ändrad åtkomstkonfiguration kräver ny inloggning', async ({page}) => {
-  const replacement=await sealAccess('github_pat_new','ett helt annat lösenord');await page.route('**/access.json',route=>route.fulfill({json:replacement}));await page.reload();await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
+for (const url of ['/', '/?file=dokument%2Fstart.md']) test(`ändrad åtkomstkonfiguration kräver ny inloggning: ${url}`, async ({page}) => {
+  const replacement=await sealAccess('github_pat_new','ett helt annat lösenord');await page.route('**/access.json',route=>route.fulfill({json:replacement}));await page.goto(url);await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
 });
 test('tillfälligt nätverksfel raderar inte den sparade inloggningen', async ({page}) => {
   const pattern='https://api.github.com/repos/Knivsta-IK/Basket**';const offline=route=>route.abort('failed');await page.route(pattern,offline);await page.reload();await expect(page.locator('.tiptap')).toBeVisible();await expect(page.locator('#notice')).toContainText('Visar sparat material');await page.unroute(pattern,offline);await page.getByRole('button',{name:'Hämta senaste materialet'}).click();await expect(page.locator('.tiptap')).toBeVisible();await expect(page.locator('#password')).toHaveCount(0);
 });
-test('utgången åtkomst återgår till inloggning utan att fastna', async ({page}) => {
-  await page.route('https://api.github.com/repos/Knivsta-IK/Basket**',route=>route.fulfill({status:401,json:{message:'Unauthorized'}}));await page.reload();await expect(page.locator('#login-error')).toContainText('Åtkomsten behöver förnyas');await expect(page.locator('#password')).toBeVisible();
+for (const url of ['/', '/?file=dokument%2Fstart.md']) for (const status of [401, 403, 404]) test(`utgången åtkomst återgår till inloggning utan att fastna: ${status} ${url}`, async ({page}) => {
+  await page.route('https://api.github.com/repos/Knivsta-IK/Basket**',route=>route.fulfill({status,json:{message:'Access denied'}}));await page.goto(url);await expect(page.locator('#login-error')).toContainText('Åtkomsten behöver förnyas');await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
+  await page.reload();await expect(page.locator('#password')).toBeVisible();await expect(page.locator('.tiptap')).toHaveCount(0);
 });
 
 async function addTestPicture(page) {
